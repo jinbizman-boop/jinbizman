@@ -1,3 +1,5 @@
+import { pbkdf2Sync } from "node:crypto";
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -50,11 +52,8 @@ export async function verifyPassword(password: string, stored: string): Promise<
   const iterations = Number(iterationText);
   if (!Number.isInteger(iterations) || iterations < 100000) return false;
   const saltBytes = base64UrlDecode(saltText);
-  const salt = new Uint8Array(saltBytes);
   const expected = base64UrlDecode(expectedText);
-  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, key, expected.length * 8);
-  const actual = new Uint8Array(bits);
+  const actual = pbkdf2Sync(password, saltBytes, iterations, expected.length, "sha256");
   if (actual.length !== expected.length) return false;
   let diff = 0;
   for (let index = 0; index < actual.length; index += 1) diff |= actual[index] ^ expected[index];
