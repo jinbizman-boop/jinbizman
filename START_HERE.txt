@@ -1,0 +1,23 @@
+JINBIZ MANAGEMENT React/Vite + ERP Final Source Package
+=======================================================
+
+1) npm install
+2) copy .dev.vars.example -> .dev.vars and set real local secrets
+3) npm run typecheck
+4) npm test
+5) npm run build
+6) npm run db:migrate
+7) npm run admin:create
+8) npx wrangler dev
+
+Production:
+- put DATABASE_URL/JWT_SECRET/email secrets through Cloudflare Secrets
+- configure MEDIA_BUCKET only when R2 media upload is required
+- run DB migrations 001~013 against the intended Neon database
+- deploy with npm run deploy
+- verify www.jinbizman.com, 5 locales, inquiry flow, admin auth, project/WBS, reports/logs, approvals and evaluation evidence
+
+IMPORTANT
+- No fixed administrator password is included.
+- The old static HTML application is reference-only under legacy-reference/.
+- Browser E2E config is included but was not executable in this sandbox because the available Playwright installation is Windows-oriented and lacks a Linux-compatible runtime.

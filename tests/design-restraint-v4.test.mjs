@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+const read=p=>fs.readFileSync(p,'utf8');
+test('public art direction uses restrained editorial palette and removes visible demo-status copy',()=>{const css=read('src/styles/artdirection.css'),shell=read('src/public/PublicShell.tsx');for(const t of ['--jd-bg:#f3f1ec','--jd-ink:#0b0d0f','--jd-accent:#2149ff','project-grid','domain-row'])assert.match(css,new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));assert.doesNotMatch(shell,/Independent AI & Platform Studio/);});
+test('admin shell removes release-candidate theatrics from visible product chrome',()=>{const shell=read('src/admin/AdminShell.tsx');assert.doesNotMatch(shell,/SOURCE READY|CONTROL SYSTEM \/ 2026|Source \/ Release Candidate/);assert.match(shell,/MANAGEMENT SYSTEM/);});
+test('mobile and desktop art direction rules exist for public and ERP surfaces',()=>{const css=read('src/styles/artdirection.css');for(const t of ['@media(max-width:1100px)','@media(max-width:760px)','.admin-main','.hero-home','.project-grid'])assert.match(css,new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));});
+test('sandbox build ships the same art-direction layer as source',()=>{const build=read('scripts/build-fallback.mjs');assert.match(build,/artdirection\.css/);});

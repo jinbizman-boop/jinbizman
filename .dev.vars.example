@@ -1,0 +1,15 @@
+# JINBIZ local runtime variables
+# Copy to .dev.vars and replace placeholders. Never commit .dev.vars.
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/neondb?sslmode=require
+JWT_SECRET=replace-with-at-least-32-random-characters
+APP_BASE_URL=http://localhost:8787
+ADMIN_ALLOWED_ORIGINS=http://localhost:8787,http://127.0.0.1:8787
+APP_ENV=local
+SESSION_TTL_SECONDS=3600
+PUBLIC_RATE_LIMIT_PER_10_MIN=20
+LOGIN_RATE_LIMIT_PER_10_MIN=10
+
+# Inquiry notification. RESEND_API_KEY is optional locally; without it the inquiry is still saved.
+INQUIRY_NOTIFY_TO=jinbizman@gmail.com
+INQUIRY_EMAIL_FROM=JINBIZ MANAGEMENT <no-reply@jinbizman.com>
+RESEND_API_KEY=

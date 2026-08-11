@@ -1,0 +1,47 @@
+{
+  "name": "jinbiz-management",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:worker": "wrangler dev --local",
+    "build": "vite build",
+    "build:vite": "vite build",
+    "build:fallback": "node scripts/build-fallback.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test:worker": "node --test tests/worker/*.test.mjs",
+    "test:react": "npm run build:sandbox && node --test tests/react-*.test.mjs tests/public-react.test.mjs tests/admin-react.test.mjs tests/performance-react.test.mjs tests/release-hardening.test.mjs",
+    "test": "npm run test:worker && npm run test:react",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "deploy": "npm run build && npm run release:check && wrangler deploy",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:seed": "node scripts/seed.mjs",
+    "admin:create": "node scripts/create-admin.mjs",
+    "types:worker": "wrangler types",
+    "test:e2e": "playwright test tests/e2e",
+    "test:a11y": "playwright test tests/e2e --grep @a11y",
+    "build:sandbox": "node scripts/build-fallback.mjs",
+    "release:check": "node scripts/release-check.mjs"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "1.0.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.0",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.4",
+    "typescript": "5.9.2",
+    "vite": "8.1.5",
+    "wrangler": "4.120.1"
+  },
+  "packageManager": "npm@10.8.2"
+}

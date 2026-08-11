@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+const read=p=>fs.readFileSync(p,'utf8');
+test('public app preserves five official locales and core company structure',()=>{const l=read('src/content/locales.ts'),p=read('src/content/public.ts');for(const x of ['ko','en','ja','fr','es'])assert.match(l,new RegExp(`"${x}"`));for(const x of ['Eureka World','Salary Hijacking','All Review','New Retro Games'])assert.match(p,new RegExp(x));for(const x of ['materials','energy','defense','welfare'])assert.match(p,new RegExp(x));});
+test('public experience contains JINBIZ signature, proof, execution matrix and Cybertron',()=>{const h=read('src/public/pages/HomePage.tsx');for(const token of ['hero-signal','proof-strip','IntelligenceFlow','execution-matrix','cybertron-orbit'])assert.match(h,new RegExp(token));});
+test('newsroom and contact consume real APIs instead of localStorage',()=>{const n=read('src/public/pages/NewsletterPage.tsx'),c=read('src/public/pages/ContactPage.tsx');assert.match(n,/\/api\/public\/news/);assert.match(c,/\/api\/public\/inquiries/);assert.doesNotMatch(n+c,/localStorage/);});

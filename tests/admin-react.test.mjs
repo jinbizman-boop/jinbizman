@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+const read=p=>fs.readFileSync(p,'utf8');
+test('ERP modules cover operations, CRM, WBS, governance, people, finance and evidence',()=>{const a=read('src/content/admin.ts');for(const token of ['services','inquiries','leads','opportunities','projects','daily-work','approvals','attendance','leave','timesheets','budgets','expenses','evaluations','audit-logs'])assert.match(a,new RegExp(`key: "${token}"`));});
+test('core ERP write workflows call Worker APIs',()=>{const p=read('src/admin/pages.tsx');for(const endpoint of ['/api/erp/projects','/api/erp/wbs','/api/erp/daily-reports','/api/erp/daily-logs','/api/erp/approvals','/api/erp/evaluations/scores','/api/admin/media'])assert.match(p,new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));});
+test('evaluation UI is evidence-first and server-finalized',()=>{const p=read('src/admin/pages.tsx');assert.match(p,/평가 근거/);assert.match(p,/evidences\?cycleId/);assert.match(p,/\/finalize/);});

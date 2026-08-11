@@ -1,0 +1,3 @@
+import test from "node:test";import assert from "node:assert/strict";import { readFile, access } from "node:fs/promises";
+test("legacy premium override layer is not part of React runtime", async()=>{await assert.rejects(access("src/styles/premium-upgrade.css")); const css=await readFile("src/styles/global.css","utf8"); assert.match(css,/hero-signal/); assert.match(css,/execution-matrix/); assert.match(css,/admin-root/);});
+test("service detail views are centralized React components without page-local style tags", async()=>{const page=await readFile("src/public/pages/ProjectPage.tsx","utf8"); assert.doesNotMatch(page,/<style[\s>]/i); assert.match(page,/ResponsiveMedia/); assert.match(page,/StatusBadge/); assert.match(page,/Seo/);});

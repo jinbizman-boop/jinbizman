@@ -1,0 +1,7 @@
+import test from 'node:test';
+import { spawnSync } from 'node:child_process';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';
+test('public media remains within a practical source package budget',()=>{const root='public/assets/images';let total=0,max=0;function walk(d){for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);if(s.isDirectory())walk(p);else if(/\.(webp|avif|jpg|jpeg|png)$/i.test(n)){total+=s.size;max=Math.max(max,s.size);}}}walk(root);assert.ok(total<12*1024*1024,`images total ${(total/1024/1024).toFixed(1)}MB`);assert.ok(max<1.2*1024*1024,`largest image ${(max/1024/1024).toFixed(1)}MB`);});
+test('runtime has no external font stylesheet dependency and respects reduced motion',()=>{const css=fs.readFileSync('src/styles/global.css','utf8');assert.doesNotMatch(css,/@import\s+url/);assert.match(css,/prefers-reduced-motion/);});
+test('fallback production build emits SPA assets',()=>{for(const f of ['dist/index.html','dist/assets/app.js','dist/assets/app.css'])assert.ok(fs.existsSync(f),`${f} missing`);const h=fs.readFileSync('dist/index.html','utf8');assert.match(h,/\/assets\/app\.js/);assert.match(h,/\/assets\/app\.css/);});
+
+test('generated fallback bundle is valid JavaScript',()=>{const result=spawnSync(process.execPath,['--check','dist/assets/app.js'],{encoding:'utf8'});assert.equal(result.status,0,result.stderr||result.stdout);});
