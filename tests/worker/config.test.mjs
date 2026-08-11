@@ -23,6 +23,8 @@ test("React admin login has no hard-coded demo password and uses auth API", asyn
 test("production seed path contains no embedded administrator password", async () => {
   const seedScript = await readFile("scripts/seed.mjs", "utf8"); assert.doesNotMatch(seedScript, /admin-user\.sql|001_demo_seed\.sql/);
   const adminCreator = await readFile("scripts/create-admin.mjs", "utf8"); assert.match(adminCreator, /ADMIN_PASSWORD/); assert.doesNotMatch(adminCreator, /jinbiz1234|JINBIZ2026/i);
+  assert.match(adminCreator, /ADMIN_PASSWORD\.length < 8/);
+  assert.match(adminCreator, /at least 8 characters/);
 });
 
 test("core React ERP workflows are wired to real write APIs", async () => {

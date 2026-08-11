@@ -1,3 +1,5 @@
+import { pbkdf2 } from "node:crypto";
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -13,13 +15,18 @@ function base64UrlDecode(value: string): Uint8Array {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
-function toExactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-}
-
 async function hmac(secret: string, value: string): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(value)));
+}
+
+function derivePbkdf2(password: string, salt: Uint8Array, iterations: number, length: number): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    pbkdf2(password, salt, iterations, length, "sha256", (error, derivedKey) => {
+      if (error) reject(error);
+      else resolve(new Uint8Array(derivedKey));
+    });
+  });
 }
 
 export async function signJwt(payload: object, secret: string): Promise<string> {
@@ -59,13 +66,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   try {
     const saltBytes = base64UrlDecode(saltText);
     const expected = base64UrlDecode(expectedText);
-    const key = await crypto.subtle.importKey("raw", encoder.encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
-    const bits = await crypto.subtle.deriveBits(
-      { name: "PBKDF2", salt: toExactArrayBuffer(saltBytes), iterations, hash: "SHA-256" },
-      key,
-      expected.length * 8
-    );
-    const actual = new Uint8Array(bits);
+    const actual = await derivePbkdf2(password, saltBytes, iterations, expected.length);
     if (actual.length !== expected.length) return false;
     let diff = 0;
     for (let index = 0; index < actual.length; index += 1) diff |= actual[index] ^ expected[index];

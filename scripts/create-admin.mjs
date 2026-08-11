@@ -6,7 +6,7 @@ neonConfig.webSocketConstructor = WebSocket;
 
 const { DATABASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME = "JINBIZ Admin" } = process.env;
 if (!DATABASE_URL || !ADMIN_EMAIL || !ADMIN_PASSWORD) throw new Error("DATABASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD are required");
-if (ADMIN_PASSWORD.length < 12) throw new Error("ADMIN_PASSWORD must be at least 12 characters");
+if (ADMIN_PASSWORD.length < 8) throw new Error("ADMIN_PASSWORD must be at least 8 characters");
 const iterations = 210000;
 const salt = randomBytes(18);
 const hash = pbkdf2Sync(ADMIN_PASSWORD, salt, iterations, 32, "sha256");

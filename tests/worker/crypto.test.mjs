@@ -26,11 +26,11 @@ test("password verification rejects malformed hashes without throwing", async ()
   assert.equal(await verifyPassword("sample-password-not-secret", "other$210000$salt$hash"), false);
 });
 
-test("worker password verifier uses async WebCrypto rather than synchronous Node PBKDF2", async () => {
+test("worker password verifier uses async PBKDF2 rather than synchronous PBKDF2", async () => {
   const source = await readFile("worker/lib/crypto.ts", "utf8");
-  assert.match(source, /crypto\.subtle\.deriveBits/);
+  assert.match(source, /import \{ pbkdf2 \} from "node:crypto"/);
+  assert.match(source, /new Promise/);
   assert.doesNotMatch(source, /pbkdf2Sync/);
-  assert.doesNotMatch(source, /node:crypto/);
 });
 
 test("JWT sign and verify remains compatible with WebCrypto HMAC", async () => {
