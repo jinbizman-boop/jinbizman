@@ -1,5 +1,3 @@
-import { pbkdf2Sync } from "node:crypto";
-
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -13,6 +11,10 @@ function base64UrlDecode(value: string): Uint8Array {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4);
   const binary = atob(normalized);
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function toExactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 async function hmac(secret: string, value: string): Promise<Uint8Array> {
@@ -47,17 +49,30 @@ export async function verifyJwt<T extends Record<string, unknown>>(token: string
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const [scheme, iterationText, saltText, expectedText] = stored.split("$");
+  const parts = stored.split("$");
+  if (parts.length !== 4) return false;
+  const [scheme, iterationText, saltText, expectedText] = parts;
   if (scheme !== "pbkdf2-sha256") return false;
   const iterations = Number(iterationText);
   if (!Number.isInteger(iterations) || iterations < 100000) return false;
-  const saltBytes = base64UrlDecode(saltText);
-  const expected = base64UrlDecode(expectedText);
-  const actual = pbkdf2Sync(password, saltBytes, iterations, expected.length, "sha256");
-  if (actual.length !== expected.length) return false;
-  let diff = 0;
-  for (let index = 0; index < actual.length; index += 1) diff |= actual[index] ^ expected[index];
-  return diff === 0;
+  if (!/^[A-Za-z0-9_-]+$/.test(saltText) || !/^[A-Za-z0-9_-]+$/.test(expectedText)) return false;
+  try {
+    const saltBytes = base64UrlDecode(saltText);
+    const expected = base64UrlDecode(expectedText);
+    const key = await crypto.subtle.importKey("raw", encoder.encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt: toExactArrayBuffer(saltBytes), iterations, hash: "SHA-256" },
+      key,
+      expected.length * 8
+    );
+    const actual = new Uint8Array(bits);
+    if (actual.length !== expected.length) return false;
+    let diff = 0;
+    for (let index = 0; index < actual.length; index += 1) diff |= actual[index] ^ expected[index];
+    return diff === 0;
+  } catch {
+    return false;
+  }
 }
 
 export async function sha256(value: string): Promise<string> {
