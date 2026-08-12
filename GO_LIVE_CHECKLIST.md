@@ -16,7 +16,7 @@
 - [x] 목표/KPI, 게시판, 지식문서, 연동 메타데이터, 이메일 템플릿 운영 API
 - [x] 조직/역할, 공통코드, 결재서식, 프로젝트 회의/이슈, 배포이력, 사이트 배너/네비게이션, 지식서식 운영 API
 - [x] R2 미디어 업로드/공개 조회 API 및 미설정 환경 fail-closed
-- [x] 001~013 Neon SQL 마이그레이션 및 원자적 migration runner
+- [x] 001~014 Neon SQL 마이그레이션 및 원자적 migration runner
 - [x] JWT HttpOnly/SameSite 세션, 5회 로그인 실패 잠금, 로그인 이력
 - [x] RBAC/permission, 감사로그, request ID, Rate Limit, 보안 헤더
 - [x] 문의 DB 저장 후 이메일 알림 후처리 및 delivery log

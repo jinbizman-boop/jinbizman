@@ -1,5 +1,6 @@
 import type { AuthUser, Env } from "../types";
 import { getAuthUser, hasPermission } from "../lib/auth";
+import { assertProjectScope, assertServiceScope, assertTeamScope } from "../lib/authorization";
 import { writeAuditLog } from "../lib/audit";
 import { getSql } from "../lib/db";
 import { fail, ok } from "../lib/response";
@@ -103,6 +104,8 @@ export async function erpWbsCreateRoute(request: Request, env: Env): Promise<Res
     return fail("VALIDATION_ERROR", "프로젝트, 업무명, 일정 또는 가중치를 확인해주세요.", 422);
   }
   const sql = getSql(env);
+  const scope = await assertProjectScope(sql, auth, projectId);
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     INSERT INTO wbs_tasks (
       project_id, parent_task_id, template_id, title, description, task_type, job_family, work_style,
@@ -127,6 +130,10 @@ export async function erpWbsUpdateRoute(request: Request, env: Env, taskId: numb
   const sql = getSql(env);
   const beforeRows = await sql`SELECT * FROM wbs_tasks WHERE id = ${taskId} LIMIT 1`;
   const before = beforeRows[0];
+  if (before) {
+    const scope = await assertProjectScope(sql, auth, Number(before.project_id));
+    if (scope instanceof Response) return scope;
+  }
   if (!before) return fail("NOT_FOUND", "WBS 업무를 찾을 수 없습니다.", 404);
   const status = body.status === undefined ? null : oneOf(body.status, WBS_STATUSES);
   const actualProgress = body.actualProgress === undefined ? null : integer(body.actualProgress, 0);
@@ -187,6 +194,17 @@ export async function erpDailyReportCreateRoute(request: Request, env: Env): Pro
   const items = normalizeDailyReportItems(body.items);
   if (!reportDate || !projectId || !items) return fail("VALIDATION_ERROR", "보고일, 프로젝트, WBS 항목을 확인해주세요.", 422);
   const sql = getSql(env);
+  const projectScope = await assertProjectScope(sql, auth, projectId);
+  if (projectScope instanceof Response) return projectScope;
+  const itemTaskIds = [...new Set(items.map((item) => Number(item.wbs_task_id)))];
+  const scopedTasks = await sql`
+    SELECT id
+    FROM wbs_tasks
+    WHERE project_id = ${projectId}
+      AND id = ANY(${itemTaskIds}::bigint[])
+      AND (assignee_user_id IS NULL OR assignee_user_id = ${auth.id})
+  `;
+  if (scopedTasks.length !== itemTaskIds.length) return fail("FORBIDDEN", "접근 가능한 WBS 업무 범위가 아닙니다.", 403);
   const itemsJson = JSON.stringify(items);
   const rows = await sql`
     WITH report AS (
@@ -268,6 +286,17 @@ export async function erpDailyLogCreateRoute(request: Request, env: Env): Promis
   const items = normalizeDailyLogItems(body.items);
   if (!logDate || !projectId || !items) return fail("VALIDATION_ERROR", "일지 날짜, 프로젝트, WBS 항목을 확인해주세요.", 422);
   const sql = getSql(env);
+  const projectScope = await assertProjectScope(sql, auth, projectId);
+  if (projectScope instanceof Response) return projectScope;
+  const itemTaskIds = [...new Set(items.map((item) => Number(item.wbs_task_id)))];
+  const scopedTasks = await sql`
+    SELECT id
+    FROM wbs_tasks
+    WHERE project_id = ${projectId}
+      AND id = ANY(${itemTaskIds}::bigint[])
+      AND (assignee_user_id IS NULL OR assignee_user_id = ${auth.id})
+  `;
+  if (scopedTasks.length !== itemTaskIds.length) return fail("FORBIDDEN", "접근 가능한 WBS 업무 범위가 아닙니다.", 403);
   const completedTaskIds = items
     .filter((item) => item.is_completed === true)
     .map((item) => Number(item.wbs_task_id));
@@ -358,6 +387,21 @@ export async function erpApprovalCreateRoute(request: Request, env: Env): Promis
     return fail("VALIDATION_ERROR", requestedStatus === "submitted" ? "문서 유형, 제목, 승인자를 확인해주세요." : "문서 유형과 제목을 확인해주세요.", 422);
   }
   const sql = getSql(env);
+  if (projectId) {
+    const scope = await assertProjectScope(sql, auth, projectId);
+    if (scope instanceof Response) return scope;
+  }
+  if (serviceId) {
+    const scope = await assertServiceScope(sql, auth, serviceId);
+    if (scope instanceof Response) return scope;
+  }
+  if (relatedWbsTaskId) {
+    const taskRows = await sql`SELECT project_id FROM wbs_tasks WHERE id = ${relatedWbsTaskId} LIMIT 1`;
+    if (!taskRows[0]) return fail("NOT_FOUND", "WBS 업무를 찾을 수 없습니다.", 404);
+    if (projectId && Number(taskRows[0].project_id) !== projectId) return fail("VALIDATION_ERROR", "WBS 업무가 결재 프로젝트에 속하지 않습니다.", 422);
+    const scope = await assertProjectScope(sql, auth, Number(taskRows[0].project_id));
+    if (scope instanceof Response) return scope;
+  }
   const lineJson = JSON.stringify(approverUserIds.map((approverUserId, index) => ({ sequence_no: index + 1, approver_user_id: approverUserId })));
   const payloadJson = typeof body.payload === "object" && body.payload !== null ? JSON.stringify(body.payload) : "{}";
   const rows = await sql`
@@ -455,6 +499,8 @@ export async function erpEvaluationEvidenceRoute(request: Request, env: Env): Pr
   const userId = integer(url.searchParams.get("userId"));
   if (!cycleId || !userId) return fail("VALIDATION_ERROR", "cycleId와 userId가 필요합니다.", 422);
   const sql = getSql(env);
+  const scope = await assertTeamScope(sql, auth, userId, [], ["hr_evaluator", "executive_admin"]);
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     SELECT id, source_type, source_id, service_id, project_id, summary_json, occurred_at
     FROM evaluation_evidences
@@ -478,6 +524,8 @@ export async function erpEvaluationScoreRoute(request: Request, env: Env): Promi
     return fail("VALIDATION_ERROR", "평가 주기, 대상, 항목, 점수를 확인해주세요.", 422);
   }
   const sql = getSql(env);
+  const scope = await assertTeamScope(sql, auth, evaluateeUserId, [], ["hr_evaluator", "executive_admin"]);
+  if (scope instanceof Response) return scope;
   try {
     const rows = await sql`
       INSERT INTO evaluation_scores (cycle_id, evaluatee_user_id, evaluator_user_id, evaluation_item_id, score, comment)

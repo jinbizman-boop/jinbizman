@@ -17,7 +17,7 @@ export async function systemAuditLogsRoute(request: Request, env: Env): Promise<
   if (auth instanceof Response) return auth;
   const url = new URL(request.url);
   const requestedLimit = Number(url.searchParams.get("limit") || 100);
-  const limit = Number.isFinite(requestedLimit) ? Math.min(300, Math.max(1, Math.trunc(requestedLimit))) : 100;
+  const limit = Number.isFinite(requestedLimit) ? Math.min(100, Math.max(1, Math.trunc(requestedLimit))) : 100;
   const sql = getSql(env);
   const rows = await sql`
     SELECT a.id, a.request_id, a.actor_user_id, u.name AS actor_name, a.action_type, a.target_type, a.target_id,

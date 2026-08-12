@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { getAuthUser, hasPermission } from "../lib/auth";
+import { assertServiceScope } from "../lib/authorization";
 import { getSql } from "../lib/db";
 import { fail, ok } from "../lib/response";
 
@@ -27,6 +28,10 @@ export async function adminMediaUploadRoute(request: Request, env: Env): Promise
 
   const sql = getSql(env);
   const serviceRows = await sql`SELECT id, service_code FROM services WHERE id = ${serviceId} LIMIT 1`;
+  if (serviceRows[0]) {
+    const scope = await assertServiceScope(sql, user, serviceId);
+    if (scope instanceof Response) return scope;
+  }
   if (!serviceRows[0]) return fail("NOT_FOUND", "서비스를 찾을 수 없습니다.", 404);
 
   const key = `site-media/${String(serviceRows[0].service_code)}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${safeFileName(file.name)}`;

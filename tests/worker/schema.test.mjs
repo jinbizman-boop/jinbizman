@@ -2,13 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 
-test("database has thirteen ordered production migrations", async () => {
+test("database has fourteen ordered production migrations", async () => {
   const files = (await readdir("db/migrations")).filter((name) => name.endsWith(".sql")).sort();
-  assert.equal(files.length, 13);
+  assert.equal(files.length, 14);
   assert.equal(files[0].startsWith("001_"), true);
   assert.equal(files[10].startsWith("011_"), true);
   assert.equal(files[11].startsWith("012_"), true);
   assert.equal(files[12].startsWith("013_"), true);
+  assert.equal(files[13].startsWith("014_"), true);
 });
 
 test("runtime rate limit table is part of migration 009", async () => {
@@ -44,12 +45,21 @@ test("workplace operations migration covers collaboration, HR and finance module
 
 test("remaining admin operations migration closes visible ERP module gaps", async () => {
   const files = (await readdir("db/migrations")).filter((name) => name.endsWith(".sql")).sort();
-  assert.equal(files.length, 13);
-  assert.equal(files.at(-1), "013_remaining_admin_operations.sql");
-  const sql = await readFile(`db/migrations/${files.at(-1)}`, "utf8");
+  assert.equal(files.length, 14);
+  assert.equal(files[12], "013_remaining_admin_operations.sql");
+  const sql = await readFile("db/migrations/013_remaining_admin_operations.sql", "utf8");
   for (const table of [
     "common_code_groups", "common_codes", "approval_templates", "approval_template_steps",
     "project_meetings", "meeting_action_items", "service_deployments", "site_banners",
     "site_navigation_items", "knowledge_templates"
   ]) assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS\\s+${table}\\b`, "i"));
+});
+
+test("mobile auth migration stores revocable device sessions without plaintext refresh tokens", async () => {
+  const sql = await readFile("db/migrations/014_mobile_auth_sessions.sql", "utf8");
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS auth_sessions/);
+  assert.match(sql, /refresh_token_hash TEXT NOT NULL UNIQUE/i);
+  assert.doesNotMatch(sql, /refresh_token\s+TEXT/i);
+  assert.match(sql, /revoked_at TIMESTAMPTZ NULL/i);
+  assert.match(sql, /rotated_from_session_id BIGINT NULL REFERENCES auth_sessions/i);
 });

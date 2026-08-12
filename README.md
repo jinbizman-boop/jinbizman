@@ -78,9 +78,16 @@ Optional email secrets:
 - `EMAIL_FROM` or `INQUIRY_EMAIL_FROM`
 - `INQUIRY_NOTIFY_TO`
 
+Non-secret rate limit settings:
+
+- `LOGIN_RATE_LIMIT_PER_10_MIN`
+- `PUBLIC_RATE_LIMIT_PER_10_MIN`
+- `PROTECTED_RATE_LIMIT_PER_10_MIN`
+- `HIGH_RISK_RATE_LIMIT_PER_10_MIN`
+
 ## Database Migration
 
-Production migrations are ordered from `db/migrations/001_*.sql` through `013_*.sql`. Apply them only through the migration process:
+Production migrations are ordered from `db/migrations/001_*.sql` through `014_*.sql`. Apply them only through the migration process:
 
 ```bash
 npm run db:migrate

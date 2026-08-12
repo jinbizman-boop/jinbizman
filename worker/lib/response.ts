@@ -17,14 +17,17 @@ export function fail(code: string, message: string, status = 400, details?: unkn
 
 export function corsHeaders(request: Request, env: Env): Headers {
   const origin = request.headers.get("origin") ?? "";
-  const allowed = env.ADMIN_ALLOWED_ORIGINS.split(",").map((value) => value.trim()).filter(Boolean);
+  const allowed = (env.ADMIN_ALLOWED_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean);
   const headers = new Headers({
-    "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
-    "access-control-allow-headers": "content-type,authorization,x-request-id",
+    "access-control-allow-methods": "GET,POST,PATCH,PUT,OPTIONS",
+    "access-control-allow-headers": "content-type,authorization,x-request-id,idempotency-key",
     "access-control-max-age": "86400",
     "vary": "Origin"
   });
-  if (origin && allowed.includes(origin)) headers.set("access-control-allow-origin", origin);
+  if (origin && allowed.includes(origin)) {
+    headers.set("access-control-allow-origin", origin);
+    headers.set("access-control-allow-credentials", "true");
+  }
   return headers;
 }
 

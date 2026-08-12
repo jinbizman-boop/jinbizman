@@ -1,9 +1,10 @@
-import type { Env } from "./types";
+﻿import type { Env } from "./types";
 import { getAuthUser } from "./lib/auth";
-import { getRequestId, isTrustedWriteOrigin } from "./lib/request";
+import { enforceApiBoundary } from "./lib/api-security";
+import { getRequestId } from "./lib/request";
 import { corsHeaders, fail, withCors } from "./lib/response";
 import { healthRoute } from "./routes/health";
-import { loginRoute, logoutRoute, meRoute } from "./routes/auth";
+import { loginRoute, logoutRoute, meRoute, mobileLoginRoute, mobileLogoutRoute, mobileMeRoute, mobileRefreshRoute } from "./routes/auth";
 import {
   publicInquiryRoute,
   publicLocalesRoute,
@@ -142,12 +143,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const path = url.pathname.replace(/\/+$/, "") || "/";
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(request, env) });
 
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)
-      && (path.startsWith("/api/admin/") || path.startsWith("/api/erp/") || path.startsWith("/api/system/") || path.startsWith("/api/auth/"))
-      && !isTrustedWriteOrigin(request, env)) {
-    return fail("FORBIDDEN_ORIGIN", "허용되지 않은 출처의 쓰기 요청입니다.", 403);
-  }
-
+  const boundary = await enforceApiBoundary(request, env);
+  if (boundary) return boundary;
   // Public and auth
   if ((path === "/api/health" || path === "/api/system/health") && request.method === "GET") return healthRoute(env);
   if (path === "/api/public/locales" && request.method === "GET") return publicLocalesRoute(env);
@@ -163,6 +160,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (path === "/api/auth/login" && request.method === "POST") return loginRoute(request, env);
   if (path === "/api/auth/me" && request.method === "GET") return meRoute(request, env);
   if (path === "/api/auth/logout" && request.method === "POST") return logoutRoute(request, env);
+  if (path === "/api/v1/auth/login" && request.method === "POST") return mobileLoginRoute(request, env);
+  if (path === "/api/v1/auth/refresh" && request.method === "POST") return mobileRefreshRoute(request, env);
+  if (path === "/api/v1/auth/me" && request.method === "GET") return mobileMeRoute(request, env);
+  if (path === "/api/v1/auth/logout" && request.method === "POST") return mobileLogoutRoute(request, env);
 
   // Existing admin reads
   if (path === "/api/admin/dashboard" && request.method === "GET") return adminDashboardRoute(request, env);
@@ -312,7 +313,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (settingMatch && request.method === "PATCH") return systemSettingUpdateRoute(request, env, decodeURIComponent(settingMatch[1]));
   if (path === "/api/system/business-domains" && request.method === "GET") return systemBusinessDomainsRoute();
 
-  return fail("NOT_FOUND", "요청한 API 경로를 찾을 수 없습니다.", 404);
+  return fail("NOT_FOUND", "?붿껌??API 寃쎈줈瑜?李얠쓣 ???놁뒿?덈떎.", 404);
 }
 
 export default {
@@ -339,7 +340,7 @@ export default {
       return withSecurityHeaders(withRequestId(response, requestId), env);
     } catch (error) {
       console.error("worker_error", error instanceof Error ? { message: error.message, stack: error.stack, requestId } : { error, requestId });
-      const response = withCors(fail("INTERNAL_ERROR", "요청을 처리하는 중 오류가 발생했습니다.", 500), request, env);
+      const response = withCors(fail("INTERNAL_ERROR", "?붿껌??泥섎━?섎뒗 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.", 500), request, env);
       return withSecurityHeaders(withRequestId(response, requestId), env);
     }
   }

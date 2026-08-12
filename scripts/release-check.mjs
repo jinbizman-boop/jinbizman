@@ -1,12 +1,37 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { API_CONTRACTS, EXPECTED_API_SUMMARY, contractKey, parseWorkerIndexContracts } from '../tests/fixtures/api-contracts.mjs';
 const root=process.cwd(); const errors=[]; const warnings=[];
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 for(const group of ['dependencies','devDependencies']) for(const [name,version] of Object.entries(pkg[group]||{})) if(!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) errors.push(`${group}.${name} is not exact: ${version}`);
-for(const required of ['src/main.tsx','worker/index.ts','wrangler.jsonc','public/robots.txt','public/sitemap.xml','db/migrations/013_remaining_admin_operations.sql']) if(!fs.existsSync(required)) errors.push(`missing ${required}`);
+for(const required of ['src/main.tsx','worker/index.ts','wrangler.jsonc','public/robots.txt','public/sitemap.xml','db/migrations/013_remaining_admin_operations.sql','db/migrations/014_mobile_auth_sessions.sql']) if(!fs.existsSync(required)) errors.push(`missing ${required}`);
+for(const required of [
+  'BASELINE.md',
+  'DB_INVENTORY.md',
+  'API_INVENTORY.md',
+  'SCREEN_INVENTORY.md',
+  'RTM.md',
+  'BACKLOG.md',
+  'AUTHORIZATION_MATRIX.md',
+  'API_VERSIONING.md',
+  'AUTH_CONTRACT.md',
+  'API_SECURITY_POLICY.md',
+  'AUDIT_MATRIX.md',
+  'AUDIT_POLICY.md',
+  'API_TEST_STRATEGY.md'
+]) if(!fs.existsSync(required)) errors.push(`missing ${required}`);
 const migrations=fs.readdirSync('db/migrations').filter(x=>/^\d{3}_.*\.sql$/.test(x)).sort();
 for(let i=0;i<migrations.length;i++){const want=String(i+1).padStart(3,'0'); if(!migrations[i].startsWith(want+'_')) errors.push(`migration sequence gap near ${migrations[i]}`)}
+const sourceContracts = await parseWorkerIndexContracts();
+const sourceKeys = new Set(sourceContracts.map(contractKey));
+const registryKeys = new Set(API_CONTRACTS.map(contractKey));
+const sourceOnly = [...sourceKeys].filter(key=>!registryKeys.has(key)).sort();
+const registryOnly = [...registryKeys].filter(key=>!sourceKeys.has(key)).sort();
+if(sourceOnly.length) errors.push(`source-only API contracts: ${sourceOnly.join(', ')}`);
+if(registryOnly.length) errors.push(`registry-only API contracts: ${registryOnly.join(', ')}`);
+if(API_CONTRACTS.length !== EXPECTED_API_SUMMARY.phaseOneCurrentContracts) errors.push(`API contract count drift: ${API_CONTRACTS.length}`);
+if(new Set(API_CONTRACTS.map(contract=>contractKey(contract))).size !== API_CONTRACTS.length) errors.push('duplicate API method+path contract in registry');
 const runtimeRoots=['src','worker','public'];
 const toolingRoots=['scripts'];
 const pathPatterns=[/[A-Za-z]:\\/g,/(^|[^A-Za-z0-9_-])\/(?:Users|home|mnt\/data)\//g,/file:\/\//g];

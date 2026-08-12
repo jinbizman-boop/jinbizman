@@ -1,5 +1,6 @@
 import type { AuthUser, Env } from "../types";
 import { getAuthUser, hasPermission } from "../lib/auth";
+import { assertProjectScope, assertServiceScope, hasAnyRole } from "../lib/authorization";
 import { writeAuditLog } from "../lib/audit";
 import { getSql } from "../lib/db";
 import { fail, ok } from "../lib/response";
@@ -10,6 +11,30 @@ async function requirePermission(request: Request, env: Env, permission: string)
   if (!user) return fail("UNAUTHORIZED", "로그인이 필요합니다.", 401);
   if (!hasPermission(user, permission)) return fail("FORBIDDEN", "이 작업을 수행할 권한이 없습니다.", 403);
   return user;
+}
+
+function hasGlobalApprovalScope(auth: AuthUser): boolean {
+  return hasAnyRole(auth, ["super_admin", "executive_admin"]) || hasPermission(auth, "system.update");
+}
+
+async function canReadApprovalDocument(sql: ReturnType<typeof getSql>, auth: AuthUser, document: Record<string, unknown>): Promise<boolean> {
+  if (hasGlobalApprovalScope(auth)) return true;
+  if (Number(document.requester_user_id) === auth.id) return true;
+  const lineRows = await sql`
+    SELECT id FROM approval_lines
+    WHERE approval_document_id = ${Number(document.id)} AND approver_user_id = ${auth.id}
+    LIMIT 1
+  `;
+  if (lineRows[0]) return true;
+  if (document.project_id) {
+    const projectScope = await assertProjectScope(sql, auth, Number(document.project_id));
+    if (!(projectScope instanceof Response)) return true;
+  }
+  if (document.service_id) {
+    const serviceScope = await assertServiceScope(sql, auth, Number(document.service_id));
+    if (!(serviceScope instanceof Response)) return true;
+  }
+  return false;
 }
 
 export async function adminDashboardRoute(request: Request, env: Env): Promise<Response> {
@@ -74,12 +99,17 @@ export async function adminProjectsRoute(request: Request, env: Env): Promise<Re
   const auth = await requirePermission(request, env, "project.read");
   if (auth instanceof Response) return auth;
   const sql = getSql(env);
+  const canGlobalProject = hasAnyRole(auth, ["super_admin", "executive_admin"]) || hasPermission(auth, "system.update");
   const rows = await sql`
     SELECT p.id, p.code AS project_code, p.name, p.status, p.start_date, p.end_date,
            COALESCE(round(avg(w.actual_progress)::numeric, 1), 0) AS progress_percent,
            count(w.id) AS task_count
     FROM projects p
     LEFT JOIN wbs_tasks w ON w.project_id = p.id
+    WHERE (${canGlobalProject} OR EXISTS (
+      SELECT 1 FROM project_members pm
+      WHERE pm.project_id = p.id AND pm.user_id = ${auth.id} AND pm.is_active = TRUE
+    ))
     GROUP BY p.id
     ORDER BY p.updated_at DESC
     LIMIT 200
@@ -94,6 +124,8 @@ export async function adminWbsRoute(request: Request, env: Env): Promise<Respons
   const projectId = Number(url.searchParams.get("projectId"));
   if (!Number.isInteger(projectId) || projectId <= 0) return fail("VALIDATION_ERROR", "projectId가 필요합니다.", 422);
   const sql = getSql(env);
+  const scope = await assertProjectScope(sql, auth, projectId);
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     SELECT id, project_id, parent_task_id, title, task_type, assignee_user_id, status, actual_progress AS progress_percent, start_date, due_date, updated_at
     FROM wbs_tasks WHERE project_id = ${projectId}
@@ -106,9 +138,38 @@ export async function adminApprovalsRoute(request: Request, env: Env): Promise<R
   const auth = await requirePermission(request, env, "approval.read");
   if (auth instanceof Response) return auth;
   const sql = getSql(env);
+  const canGlobalApproval = hasGlobalApprovalScope(auth);
   const rows = await sql`
     SELECT id, document_type, title, status, requester_user_id, submitted_at AS requested_at, completed_at, updated_at
-    FROM approval_documents ORDER BY updated_at DESC LIMIT 200
+    FROM approval_documents d
+    WHERE (
+      ${canGlobalApproval}
+      OR d.requester_user_id = ${auth.id}
+      OR EXISTS (
+        SELECT 1 FROM approval_lines l
+        WHERE l.approval_document_id = d.id AND l.approver_user_id = ${auth.id}
+      )
+      OR (
+        d.project_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM project_members pm
+          WHERE pm.project_id = d.project_id AND pm.user_id = ${auth.id} AND pm.is_active = TRUE
+        )
+      )
+      OR (
+        d.service_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM services s
+          WHERE s.id = d.service_id
+            AND (
+              s.operator_user_id = ${auth.id}
+              OR s.tech_owner_user_id = ${auth.id}
+              OR (${auth.departmentId ?? null}::bigint IS NOT NULL AND s.owner_department_id = ${auth.departmentId ?? null})
+            )
+        )
+      )
+    )
+    ORDER BY updated_at DESC LIMIT 200
   `;
   return ok(rows);
 }
@@ -128,7 +189,18 @@ export async function adminServicesRoute(request: Request, env: Env): Promise<Re
   const auth = await requirePermission(request, env, "service.read");
   if (auth instanceof Response) return auth;
   const sql = getSql(env);
-  const rows = await sql`SELECT * FROM services ORDER BY updated_at DESC LIMIT 200`;
+  const canGlobalService = hasAnyRole(auth, ["super_admin", "executive_admin"]) || hasPermission(auth, "system.update");
+  const rows = await sql`
+    SELECT *
+    FROM services
+    WHERE (
+      ${canGlobalService}
+      OR operator_user_id = ${auth.id}
+      OR tech_owner_user_id = ${auth.id}
+      OR (${auth.departmentId ?? null}::bigint IS NOT NULL AND owner_department_id = ${auth.departmentId ?? null})
+    )
+    ORDER BY updated_at DESC LIMIT 200
+  `;
   return ok(rows);
 }
 
@@ -150,13 +222,25 @@ export async function adminContentsRoute(request: Request, env: Env): Promise<Re
   const serviceId = Number(url.searchParams.get("serviceId"));
   const typeCode = (url.searchParams.get("typeCode") ?? "").trim();
   const sql = getSql(env);
+  const scopedServiceId = Number.isInteger(serviceId) && serviceId > 0 ? serviceId : null;
+  if (scopedServiceId) {
+    const scope = await assertServiceScope(sql, auth, scopedServiceId);
+    if (scope instanceof Response) return scope;
+  }
+  const canGlobalContent = hasAnyRole(auth, ["super_admin", "executive_admin"]) || hasPermission(auth, "system.update");
   const rows = await sql`
     SELECT i.id, i.service_id, s.service_name, i.content_type_id, t.type_code, t.name AS content_type_name,
            i.title, i.slug, i.status, i.sort_order, i.payload_json, i.published_at, i.updated_at
     FROM service_content_items i
     JOIN services s ON s.id = i.service_id
     JOIN service_content_types t ON t.id = i.content_type_id
-    WHERE (${Number.isInteger(serviceId) && serviceId > 0 ? serviceId : null}::bigint IS NULL OR i.service_id = ${Number.isInteger(serviceId) && serviceId > 0 ? serviceId : null})
+    WHERE (${scopedServiceId}::bigint IS NULL OR i.service_id = ${scopedServiceId})
+      AND (
+        ${canGlobalContent}
+        OR s.operator_user_id = ${auth.id}
+        OR s.tech_owner_user_id = ${auth.id}
+        OR (${auth.departmentId ?? null}::bigint IS NOT NULL AND s.owner_department_id = ${auth.departmentId ?? null})
+      )
       AND (${typeCode || null}::text IS NULL OR t.type_code = ${typeCode || null})
     ORDER BY i.service_id, t.sort_order, i.sort_order, i.id
     LIMIT 500
@@ -171,10 +255,12 @@ export async function adminUsersRoute(request: Request, env: Env): Promise<Respo
     return fail("FORBIDDEN", "사용자 목록을 조회할 권한이 없습니다.", 403);
   }
   const sql = getSql(env);
+  const canReadAllUsers = hasPermission(auth, "user.read") || hasAnyRole(auth, ["super_admin", "executive_admin"]) || hasPermission(auth, "system.update");
   const rows = await sql`
     SELECT u.id, u.name, u.email::text AS email, u.department_id, d.name AS department_name, u.job_family, u.job_role
     FROM users u LEFT JOIN departments d ON d.id = u.department_id
     WHERE u.status = 'active'
+      AND (${canReadAllUsers} OR (${auth.departmentId ?? null}::bigint IS NOT NULL AND u.department_id = ${auth.departmentId ?? null}))
     ORDER BY COALESCE(d.sort_order, 999999), u.name
     LIMIT 500
   `;
@@ -194,6 +280,9 @@ export async function adminApprovalDetailRoute(request: Request, env: Env, docum
     WHERE d.id = ${documentId} LIMIT 1
   `;
   if (!docs[0]) return fail("NOT_FOUND", "결재 문서를 찾을 수 없습니다.", 404);
+  if (!(await canReadApprovalDocument(sql, auth, docs[0]))) {
+    return fail("FORBIDDEN", "Approval document is outside the permitted scope.", 403);
+  }
   const lines = await sql`
     SELECT l.*, u.name AS approver_name, u.email::text AS approver_email
     FROM approval_lines l JOIN users u ON u.id = l.approver_user_id
@@ -229,6 +318,8 @@ export async function adminContentTypesRoute(request: Request, env: Env, service
   if (auth instanceof Response) return auth;
   if (!Number.isInteger(serviceId) || serviceId <= 0) return fail("VALIDATION_ERROR", "serviceId를 확인해주세요.", 422);
   const sql = getSql(env);
+  const scope = await assertServiceScope(sql, auth, serviceId);
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     SELECT id, service_id, type_code, name, category, sort_order, schema_json, is_active
     FROM service_content_types
@@ -329,6 +420,8 @@ export async function adminServiceDomainsRoute(request: Request, env: Env, servi
   const auth = await requirePermission(request, env, "service.read");
   if (auth instanceof Response) return auth;
   const sql = getSql(env);
+  const scope = await assertServiceScope(sql, auth, serviceId);
+  if (scope instanceof Response) return scope;
   const rows = await sql`SELECT id, service_id, domain, locale, is_canonical, updated_at FROM service_domains WHERE service_id = ${serviceId} ORDER BY locale`;
   return ok(rows);
 }
@@ -337,6 +430,8 @@ export async function adminServiceChangesRoute(request: Request, env: Env, servi
   const auth = await requirePermission(request, env, "service.read");
   if (auth instanceof Response) return auth;
   const sql = getSql(env);
+  const scope = await assertServiceScope(sql, auth, serviceId);
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     SELECT c.id, c.action_type, c.target_type, c.target_id, c.actor_user_id, u.name AS actor_name, c.created_at
     FROM service_change_logs c LEFT JOIN users u ON u.id = c.actor_user_id

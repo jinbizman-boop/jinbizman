@@ -1,5 +1,6 @@
 import type { AuthUser, Env } from "../types";
 import { getAuthUser, hasPermission } from "../lib/auth";
+import { assertProjectScope, assertSelfScope, assertTeamScope, hasAnyRole } from "../lib/authorization";
 import { writeAuditLog } from "../lib/audit";
 import { getSql } from "../lib/db";
 import { fail, ok } from "../lib/response";
@@ -22,6 +23,28 @@ async function requirePermission(request: Request, env: Env, permission: string)
   if (!user) return fail("UNAUTHORIZED", "로그인이 필요합니다.", 401);
   if (!hasPermission(user, permission)) return fail("FORBIDDEN", "이 작업을 수행할 권한이 없습니다.", 403);
   return user;
+}
+
+function hasGlobalGoalScope(auth: AuthUser): boolean {
+  return hasAnyRole(auth, ["super_admin", "executive_admin", "hr_evaluator"]) || hasPermission(auth, "system.update");
+}
+
+async function assertGoalOwnerScope(
+  sql: ReturnType<typeof getSql>,
+  auth: AuthUser,
+  ownerType: string,
+  ownerUserId: number | null,
+  departmentId: number | null,
+  projectId: number | null
+): Promise<Response | null> {
+  if (hasGlobalGoalScope(auth)) return null;
+  if (ownerType === "user") return assertTeamScope(sql, auth, ownerUserId, [], ["hr_evaluator", "executive_admin"]);
+  if (ownerType === "department") {
+    if (auth.departmentId && departmentId === auth.departmentId) return null;
+    return fail("FORBIDDEN", "Goal owner is outside the permitted team scope.", 403);
+  }
+  if (ownerType === "project") return assertProjectScope(sql, auth, projectId, [], ["executive_admin"]);
+  return fail("FORBIDDEN", "Goal owner is outside the permitted scope.", 403);
 }
 
 function integer(value: unknown, min = 1): number | null {
@@ -50,10 +73,18 @@ function bool(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function requestedUserId(request: Request, auth: AuthUser, managePermission?: string): number {
-  if (!managePermission || !hasPermission(auth, managePermission)) return auth.id;
+function requestedUserId(request: Request, auth: AuthUser, managePermission?: string): number | Response {
   const raw = new URL(request.url).searchParams.get("userId");
-  return integer(raw) ?? auth.id;
+  const requested = integer(raw);
+  if (!requested || requested === auth.id) return auth.id;
+  if (!managePermission || !hasPermission(auth, managePermission)) {
+    return assertSelfScope(auth, requested) ?? auth.id;
+  }
+  return requested;
+}
+
+function hasGlobalWorkplaceScope(auth: AuthUser): boolean {
+  return hasAnyRole(auth, ["super_admin", "hr_evaluator", "executive_admin"]) || hasPermission(auth, "system.update");
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +189,10 @@ export async function attendanceListRoute(request: Request, env: Env): Promise<R
   const auth = await requirePermission(request, env, "attendance.read");
   if (auth instanceof Response) return auth;
   const userId = requestedUserId(request, auth, "attendance.manage");
+  if (userId instanceof Response) return userId;
   const sql = getSql(env);
+  const scope = userId === auth.id ? null : await assertTeamScope(sql, auth, userId, [], ["hr_evaluator", "executive_admin"]);
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     SELECT a.*, u.name AS user_name
     FROM attendance_records a
@@ -233,6 +267,11 @@ export async function attendanceCorrectionDecisionRoute(request: Request, env: E
   if (!status) return fail("VALIDATION_ERROR", "정정 처리 상태를 확인해주세요.", 422);
   const sql = getSql(env);
   const before = (await sql`SELECT * FROM attendance_records WHERE id = ${id} LIMIT 1`)[0];
+  const beforeUserId = Number(before?.user_id ?? 0);
+  if (beforeUserId) {
+    const scope = await assertTeamScope(sql, auth, beforeUserId, [], ["hr_evaluator", "executive_admin"]);
+    if (scope instanceof Response) return scope;
+  }
   if (!before) return fail("NOT_FOUND", "근태 기록을 찾을 수 없습니다.", 404);
   if (String(before.correction_status) !== "requested") return fail("CONFLICT", "정정 요청 상태가 아닙니다.", 409);
   const clockInAt = body.clockInAt ? isoDateTime(body.clockInAt) : null;
@@ -263,7 +302,10 @@ export async function leaveSummaryRoute(request: Request, env: Env): Promise<Res
   const auth = await requirePermission(request, env, "leave.read");
   if (auth instanceof Response) return auth;
   const userId = requestedUserId(request, auth, "leave.manage");
+  if (userId instanceof Response) return userId;
   const sql = getSql(env);
+  const scope = userId === auth.id ? null : await assertTeamScope(sql, auth, userId, [], ["hr_evaluator", "executive_admin"]);
+  if (scope instanceof Response) return scope;
   const balance = await sql`
     SELECT *, (granted_days + adjusted_days - used_days) AS remaining_days
     FROM leave_balances
@@ -290,6 +332,8 @@ export async function leaveBalanceUpsertRoute(request: Request, env: Env): Promi
   const adjustedDays = numeric(body.adjustedDays ?? 0, -366, 366);
   if (!userId || !balanceYear || balanceYear > 2100 || grantedDays === null || adjustedDays === null) return fail("VALIDATION_ERROR", "사용자, 연도, 연차 부여값을 확인해주세요.", 422);
   const sql = getSql(env);
+  const scope = await assertTeamScope(sql, auth, userId, [], ["hr_evaluator", "executive_admin"]);
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     INSERT INTO leave_balances (user_id, balance_year, granted_days, adjusted_days, used_days)
     VALUES (${userId}, ${balanceYear}, ${grantedDays}, ${adjustedDays}, 0)
@@ -340,6 +384,10 @@ export async function leaveDecisionRoute(request: Request, env: Env, id: number)
   const sql = getSql(env);
   const beforeRows = await sql`SELECT * FROM leave_requests WHERE id = ${id} LIMIT 1`;
   const before = beforeRows[0];
+  if (before) {
+    const scope = await assertTeamScope(sql, auth, Number(before.user_id), [], ["hr_evaluator", "executive_admin"]);
+    if (scope instanceof Response) return scope;
+  }
   if (!before) return fail("NOT_FOUND", "휴가 신청을 찾을 수 없습니다.", 404);
   if (!["submitted", "draft"].includes(String(before.status))) return fail("CONFLICT", "이미 처리된 휴가 신청입니다.", 409);
   const consumesAnnual = status === "approved" && ["annual", "half_day_am", "half_day_pm"].includes(String(before.leave_type));
@@ -386,6 +434,11 @@ export async function timesheetListRoute(request: Request, env: Env): Promise<Re
   const canReview = hasPermission(auth, "timesheet.review");
   const userId = canReview ? integer(new URL(request.url).searchParams.get("userId")) : auth.id;
   const sql = getSql(env);
+  const canGlobalReview = hasGlobalWorkplaceScope(auth);
+  if (userId && userId !== auth.id && !canGlobalReview) {
+    const scope = await assertTeamScope(sql, auth, userId);
+    if (scope instanceof Response) return scope;
+  }
   const rows = await sql`
     SELECT t.*, u.name AS user_name, p.name AS project_name, w.title AS wbs_title
     FROM timesheets t
@@ -393,13 +446,14 @@ export async function timesheetListRoute(request: Request, env: Env): Promise<Re
     JOIN projects p ON p.id = t.project_id
     LEFT JOIN wbs_tasks w ON w.id = t.wbs_task_id
     WHERE (${userId}::bigint IS NULL OR t.user_id = ${userId})
+      AND (${canGlobalReview} OR t.user_id = ${auth.id} OR u.department_id = ${auth.departmentId ?? null})
     ORDER BY t.work_date DESC, t.id DESC LIMIT 200
   `;
   const allocations = await sql`
     SELECT a.*, p.name AS project_name, u.name AS user_name
     FROM project_resource_allocations a
     JOIN projects p ON p.id = a.project_id JOIN users u ON u.id = a.user_id
-    WHERE (${canReview} OR a.user_id = ${auth.id})
+    WHERE (${canGlobalReview} OR a.user_id = ${auth.id} OR u.department_id = ${auth.departmentId ?? null})
     ORDER BY a.allocation_month DESC, a.project_id LIMIT 200
   `;
   return ok({ items: rows, allocations });
@@ -418,6 +472,8 @@ export async function timesheetCreateRoute(request: Request, env: Env): Promise<
   const status = oneOf(body.status, ["draft", "submitted"] as const, "submitted") ?? "submitted";
   if (!projectId || !workDate || !hours) return fail("VALIDATION_ERROR", "프로젝트, 작업일, 시간을 확인해주세요.", 422);
   const sql = getSql(env);
+  const projectScope = await assertProjectScope(sql, auth, projectId);
+  if (projectScope instanceof Response) return projectScope;
   if (wbsTaskId) {
     const link = await sql`SELECT id FROM wbs_tasks WHERE id = ${wbsTaskId} AND project_id = ${projectId} LIMIT 1`;
     if (!link[0]) return fail("VALIDATION_ERROR", "선택한 WBS가 프로젝트에 속하지 않습니다.", 422);
@@ -442,6 +498,10 @@ export async function timesheetReviewRoute(request: Request, env: Env, id: numbe
   if (!status) return fail("VALIDATION_ERROR", "검토 상태를 확인해주세요.", 422);
   const sql = getSql(env);
   const before = (await sql`SELECT * FROM timesheets WHERE id = ${id} LIMIT 1`)[0];
+  if (before) {
+    const scope = await assertTeamScope(sql, auth, Number(before.user_id), [], ["hr_evaluator", "executive_admin"]);
+    if (scope instanceof Response) return scope;
+  }
   if (!before) return fail("NOT_FOUND", "타임시트를 찾을 수 없습니다.", 404);
   const rows = await sql`
     UPDATE timesheets SET status = ${status}, reviewed_by = ${auth.id}, reviewed_at = now(), updated_at = now()
@@ -462,6 +522,10 @@ export async function allocationUpsertRoute(request: Request, env: Env): Promise
   const percent = numeric(body.allocationPercent, 0, 100);
   if (!projectId || !userId || !month || percent === null || !/^\d{4}-\d{2}-01$/.test(month)) return fail("VALIDATION_ERROR", "프로젝트, 구성원, 월(YYYY-MM-01), 투입률을 확인해주세요.", 422);
   const sql = getSql(env);
+  const projectScope = await assertProjectScope(sql, auth, projectId, [], ["executive_admin"]);
+  if (projectScope instanceof Response) return projectScope;
+  const teamScope = await assertTeamScope(sql, auth, userId, [], ["hr_evaluator", "executive_admin"]);
+  if (teamScope instanceof Response) return teamScope;
   const total = await sql`
     SELECT COALESCE(sum(allocation_percent), 0) AS total
     FROM project_resource_allocations
@@ -487,11 +551,20 @@ export async function budgetListRoute(request: Request, env: Env): Promise<Respo
   if (auth instanceof Response) return auth;
   const projectId = integer(new URL(request.url).searchParams.get("projectId"));
   const sql = getSql(env);
+  const canGlobalBudget = hasAnyRole(auth, ["super_admin", "finance_manager", "executive_admin"]) || hasPermission(auth, "system.update");
+  if (projectId && !canGlobalBudget) {
+    const scope = await assertProjectScope(sql, auth, projectId);
+    if (scope instanceof Response) return scope;
+  }
   const rows = await sql`
     SELECT b.*, p.name AS project_name,
            CASE WHEN b.planned_amount > 0 THEN ROUND((b.spent_amount / b.planned_amount) * 100, 2) ELSE 0 END AS execution_rate
     FROM project_budgets b JOIN projects p ON p.id = b.project_id
     WHERE (${projectId}::bigint IS NULL OR b.project_id = ${projectId})
+      AND (${canGlobalBudget} OR EXISTS (
+        SELECT 1 FROM project_members pm
+        WHERE pm.project_id = b.project_id AND pm.user_id = ${auth.id} AND pm.is_active = TRUE
+      ))
     ORDER BY b.project_id, b.category_code LIMIT 300
   `;
   return ok({ items: rows });
@@ -508,6 +581,8 @@ export async function budgetUpsertRoute(request: Request, env: Env): Promise<Res
   const planned = numeric(body.plannedAmount, 0);
   if (!projectId || !categoryCode || !categoryName || planned === null) return fail("VALIDATION_ERROR", "프로젝트, 예산 비목, 금액을 확인해주세요.", 422);
   const sql = getSql(env);
+  const scope = await assertProjectScope(sql, auth, projectId, ["budget.manage"], ["finance_manager", "executive_admin"]);
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     INSERT INTO project_budgets (project_id, category_code, category_name, planned_amount, currency)
     VALUES (${projectId}, ${categoryCode}, ${categoryName}, ${planned}, ${text(body.currency, 3) ?? "KRW"})
@@ -522,6 +597,7 @@ export async function expenseListRoute(request: Request, env: Env): Promise<Resp
   const auth = await requirePermission(request, env, "expense.read");
   if (auth instanceof Response) return auth;
   const canManage = hasPermission(auth, "expense.manage");
+  const canGlobalExpense = hasAnyRole(auth, ["super_admin", "finance_manager", "executive_admin"]) || hasPermission(auth, "system.update");
   const sql = getSql(env);
   const rows = await sql`
     SELECT e.*, u.name AS requester_name, p.name AS project_name, b.category_name
@@ -529,7 +605,14 @@ export async function expenseListRoute(request: Request, env: Env): Promise<Resp
     JOIN users u ON u.id = e.requester_user_id
     LEFT JOIN projects p ON p.id = e.project_id
     LEFT JOIN project_budgets b ON b.id = e.budget_id
-    WHERE (${canManage} OR e.requester_user_id = ${auth.id})
+    WHERE (
+      ${canGlobalExpense}
+      OR e.requester_user_id = ${auth.id}
+      OR (e.project_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM project_members pm
+        WHERE pm.project_id = e.project_id AND pm.user_id = ${auth.id} AND pm.is_active = TRUE
+      ))
+    )
     ORDER BY e.expense_date DESC, e.id DESC LIMIT 300
   `;
   return ok({ items: rows });
@@ -549,6 +632,10 @@ export async function expenseCreateRoute(request: Request, env: Env): Promise<Re
   const status = oneOf(body.status, ["draft", "submitted"] as const, "submitted") ?? "submitted";
   if (!expenseDate || !description || supply === null || tax === null) return fail("VALIDATION_ERROR", "지출일, 내용, 금액을 확인해주세요.", 422);
   const sql = getSql(env);
+  if (projectId) {
+    const scope = await assertProjectScope(sql, auth, projectId);
+    if (scope instanceof Response) return scope;
+  }
   if (budgetId && projectId) {
     const link = await sql`SELECT id FROM project_budgets WHERE id = ${budgetId} AND project_id = ${projectId} LIMIT 1`;
     if (!link[0]) return fail("VALIDATION_ERROR", "선택한 예산 비목이 프로젝트에 속하지 않습니다.", 422);
@@ -571,6 +658,12 @@ export async function expenseUpdateRoute(request: Request, env: Env, id: number)
   if (!status) return fail("VALIDATION_ERROR", "지출 상태를 확인해주세요.", 422);
   const sql = getSql(env);
   const before = (await sql`SELECT * FROM expense_requests WHERE id = ${id} LIMIT 1`)[0];
+  if (before && !hasAnyRole(auth, ["finance_manager", "executive_admin"])) {
+    const scope = before.project_id
+      ? await assertProjectScope(sql, auth, Number(before.project_id), [], ["executive_admin"])
+      : assertSelfScope(auth, Number(before.requester_user_id), "expense.manage");
+    if (scope instanceof Response) return scope;
+  }
   if (!before) return fail("NOT_FOUND", "지출 요청을 찾을 수 없습니다.", 404);
   if (String(before.status) === "paid" && status !== "paid") return fail("PRECONDITION_FAILED", "지급 완료된 지출은 상태를 되돌릴 수 없습니다.", 412);
   const rows = await sql`
@@ -596,7 +689,7 @@ export async function expenseUpdateRoute(request: Request, env: Env, id: number)
 export async function goalListRoute(request: Request, env: Env): Promise<Response> {
   const auth = await requirePermission(request, env, "goal.read");
   if (auth instanceof Response) return auth;
-  const canManage = hasPermission(auth, "goal.manage");
+  const canGlobalGoal = hasGlobalGoalScope(auth);
   const sql = getSql(env);
   const rows = await sql`
     SELECT g.*, u.name AS owner_user_name, d.name AS department_name, p.name AS project_name
@@ -604,7 +697,18 @@ export async function goalListRoute(request: Request, env: Env): Promise<Respons
     LEFT JOIN users u ON u.id = g.owner_user_id
     LEFT JOIN departments d ON d.id = g.department_id
     LEFT JOIN projects p ON p.id = g.project_id
-    WHERE (${canManage} OR g.owner_user_id = ${auth.id})
+    WHERE (
+      ${canGlobalGoal}
+      OR g.owner_user_id = ${auth.id}
+      OR (${auth.departmentId ?? null}::bigint IS NOT NULL AND g.department_id = ${auth.departmentId ?? null})
+      OR (
+        g.project_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM project_members pm
+          WHERE pm.project_id = g.project_id AND pm.user_id = ${auth.id} AND pm.is_active = TRUE
+        )
+      )
+    )
     ORDER BY g.status, g.updated_at DESC LIMIT 300
   `;
   return ok({ items: rows });
@@ -626,6 +730,8 @@ export async function goalCreateRoute(request: Request, env: Env): Promise<Respo
     return fail("VALIDATION_ERROR", "목표 소유자, 주기, 제목, 목표값을 확인해주세요.", 422);
   }
   const sql = getSql(env);
+  const scope = await assertGoalOwnerScope(sql, auth, ownerType, ownerUserId, departmentId, projectId);
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     INSERT INTO goals (owner_type, owner_user_id, department_id, project_id, cycle_label, title, metric_name, target_value, current_value, unit, status, weight, created_by)
     VALUES (${ownerType}, ${ownerUserId}, ${departmentId}, ${projectId}, ${cycleLabel}, ${titleValue}, ${text(body.metricName, 160) ?? ""}, ${targetValue}, ${body.currentValue === undefined ? null : numeric(body.currentValue, -Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)}, ${text(body.unit, 40) ?? ""}, ${oneOf(body.status, GOAL_STATUS, "active") ?? "active"}, ${numeric(body.weight ?? 1, 0, 100) ?? 1}, ${auth.id})
@@ -646,6 +752,15 @@ export async function goalUpdateRoute(request: Request, env: Env, id: number): P
   const sql = getSql(env);
   const before = (await sql`SELECT * FROM goals WHERE id = ${id} LIMIT 1`)[0];
   if (!before) return fail("NOT_FOUND", "목표를 찾을 수 없습니다.", 404);
+  const scope = await assertGoalOwnerScope(
+    sql,
+    auth,
+    String(before.owner_type),
+    before.owner_user_id ? Number(before.owner_user_id) : null,
+    before.department_id ? Number(before.department_id) : null,
+    before.project_id ? Number(before.project_id) : null
+  );
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     UPDATE goals SET status = COALESCE(${status}, status), current_value = CASE WHEN ${body.currentValue === undefined} THEN current_value ELSE ${currentValue}::numeric END, updated_at = now()
     WHERE id = ${id} RETURNING *

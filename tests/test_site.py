@@ -55,8 +55,8 @@ class ReactSiteTests(unittest.TestCase):
         for endpoint in endpoints: self.assertIn(endpoint,text)
     def test_worker_spa_admin_auth_gate(self):
         text=read('worker/index.ts'); self.assertIn('url.pathname !== "/admin/login"',text); self.assertIn('new URL("/admin/login"',text); self.assertNotIn('/admin/login.html',text)
-    def test_db_has_thirteen_ordered_migrations(self):
-        files=sorted((ROOT/'db/migrations').glob('*.sql')); self.assertEqual(len(files),13); self.assertEqual(files[0].name[:3],'001'); self.assertEqual(files[-1].name[:3],'013')
+    def test_db_has_fourteen_ordered_migrations(self):
+        files=sorted((ROOT/'db/migrations').glob('*.sql')); self.assertEqual(len(files),14); self.assertEqual(files[0].name[:3],'001'); self.assertEqual(files[-1].name[:3],'014')
     def test_media_budget_and_local_only_font_policy(self):
         images=[p for p in (ROOT/'public/assets/images').rglob('*') if p.suffix.lower() in {'.webp','.avif','.jpg','.jpeg','.png'}]
         total=sum(p.stat().st_size for p in images); largest=max(p.stat().st_size for p in images)

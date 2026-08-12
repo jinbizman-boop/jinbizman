@@ -15,6 +15,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:worker": "node --test tests/worker/*.test.mjs",
+    "test:api-contract": "node --test tests/worker/api-contract.test.mjs",
+    "test:security": "node --test tests/worker/authorization.test.mjs tests/worker/mobile-auth.test.mjs tests/worker/api-security.test.mjs tests/worker/audit.test.mjs tests/worker/api-contract.test.mjs",
     "test:react": "npm run build:sandbox && node --test tests/react-*.test.mjs tests/public-react.test.mjs tests/admin-react.test.mjs tests/performance-react.test.mjs tests/release-hardening.test.mjs",
     "test": "npm run test:worker && npm run test:react",
     "verify": "npm run typecheck && npm test && npm run build",

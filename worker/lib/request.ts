@@ -2,7 +2,8 @@ import type { Env } from "../types";
 import { sha256 } from "./crypto";
 
 export function getRequestId(request: Request): string {
-  return request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+  const requestId = request.headers.get("x-request-id")?.trim();
+  return requestId && /^[A-Za-z0-9._:-]{1,120}$/.test(requestId) ? requestId : crypto.randomUUID();
 }
 
 export function getClientIp(request: Request): string {
@@ -24,6 +25,6 @@ export function isTrustedWriteOrigin(request: Request, env: Env): boolean {
   if (/^Bearer\s+/i.test(request.headers.get("authorization") || "")) return true;
   const origin = request.headers.get("origin");
   if (!origin) return false;
-  const allowed = env.ADMIN_ALLOWED_ORIGINS.split(",").map((value) => value.trim()).filter(Boolean);
+  const allowed = (env.ADMIN_ALLOWED_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean);
   return allowed.includes(origin);
 }

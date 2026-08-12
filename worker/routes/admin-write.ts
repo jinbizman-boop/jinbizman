@@ -1,5 +1,6 @@
 import type { AuthUser, Env } from "../types";
 import { getAuthUser, hasPermission } from "../lib/auth";
+import { assertServiceScope } from "../lib/authorization";
 import { writeAuditLog } from "../lib/audit";
 import { getSql } from "../lib/db";
 import { fail, ok } from "../lib/response";
@@ -129,6 +130,10 @@ export async function adminServiceUpdateRoute(request: Request, env: Env, servic
   if (!body) return fail("INVALID_JSON", "올바른 JSON 요청이 필요합니다.");
   const sql = getSql(env);
   const beforeRows = await sql`SELECT * FROM services WHERE id = ${serviceId} LIMIT 1`;
+  if (beforeRows[0]) {
+    const scope = await assertServiceScope(sql, auth, serviceId);
+    if (scope instanceof Response) return scope;
+  }
   if (!beforeRows[0]) return fail("NOT_FOUND", "서비스를 찾을 수 없습니다.", 404);
   const serviceName = body.serviceName === undefined ? null : text(body.serviceName, 255, true);
   const status = body.status === undefined ? null : oneOf(body.status, SERVICE_STATUSES);
@@ -171,6 +176,8 @@ export async function adminContentCreateRoute(request: Request, env: Env): Promi
   const payloadJson = typeof body.payload === "object" && body.payload !== null ? JSON.stringify(body.payload) : "{}";
   if (!serviceId || !contentTypeId || !title || !slug) return fail("VALIDATION_ERROR", "서비스, 콘텐츠 유형, 제목, slug가 필요합니다.", 422);
   const sql = getSql(env);
+  const scope = await assertServiceScope(sql, auth, serviceId);
+  if (scope instanceof Response) return scope;
   const rows = await sql`
     INSERT INTO service_content_items (service_id, content_type_id, title, slug, status, payload_json, published_at, created_by, updated_by)
     VALUES (${serviceId}, ${contentTypeId}, ${title}, ${slug}, ${status}, ${payloadJson}::jsonb,
@@ -197,6 +204,10 @@ export async function adminTranslationUpsertRoute(request: Request, env: Env, co
   if (!normalizedLocale || normalizedLocale === "ko" || !title || !slug) return fail("VALIDATION_ERROR", "보조 언어, 제목, slug를 확인해주세요.", 422);
   const sql = getSql(env);
   const parentRows = await sql`SELECT service_id FROM service_content_items WHERE id = ${contentId} LIMIT 1`;
+  if (parentRows[0]) {
+    const scope = await assertServiceScope(sql, auth, Number(parentRows[0].service_id));
+    if (scope instanceof Response) return scope;
+  }
   if (!parentRows[0]) return fail("NOT_FOUND", "콘텐츠를 찾을 수 없습니다.", 404);
   const rows = await sql`
     INSERT INTO service_translations (service_content_item_id, locale, title, slug, seo_title, seo_description, payload_json, status, published_at)
@@ -229,6 +240,10 @@ export async function adminNewsCreateRoute(request: Request, env: Env): Promise<
   const serviceId = optionalPositiveInteger(body.serviceId);
   if (!title || !slug) return fail("VALIDATION_ERROR", "제목과 slug가 필요합니다.", 422);
   const sql = getSql(env);
+  if (serviceId) {
+    const scope = await assertServiceScope(sql, auth, serviceId);
+    if (scope instanceof Response) return scope;
+  }
   const rows = await sql`
     INSERT INTO news_posts (category, service_id, title, slug, summary, body, status, published_at, author_user_id, created_by, updated_by)
     VALUES (${category}, ${serviceId}, ${title}, ${slug}, ${summary}, ${articleBody}, ${status},
@@ -245,6 +260,10 @@ export async function adminInquiryConvertRoute(request: Request, env: Env, inqui
   const body = await readJson(request) ?? {};
   const serviceId = optionalPositiveInteger(body.serviceId);
   const sql = getSql(env);
+  if (serviceId) {
+    const scope = await assertServiceScope(sql, auth, serviceId);
+    if (scope instanceof Response) return scope;
+  }
   const sourceRows = await sql`SELECT * FROM inquiries WHERE id = ${inquiryId} LIMIT 1`;
   const source = sourceRows[0];
   if (!source) return fail("NOT_FOUND", "문의를 찾을 수 없습니다.", 404);
@@ -279,6 +298,10 @@ export async function adminContentUpdateRoute(request: Request, env: Env, conten
   if (auth instanceof Response) return auth;
   const sql = getSql(env);
   const before = (await sql`SELECT * FROM service_content_items WHERE id = ${contentId} LIMIT 1`)[0];
+  if (before) {
+    const scope = await assertServiceScope(sql, auth, Number(before.service_id));
+    if (scope instanceof Response) return scope;
+  }
   if (!before) return fail("NOT_FOUND", "콘텐츠를 찾을 수 없습니다.", 404);
   const titleValue = body.title === undefined ? null : text(body.title, 255, true);
   const slug = body.slug === undefined ? null : text(body.slug, 255, true);
@@ -315,6 +338,10 @@ export async function adminNewsUpdateRoute(request: Request, env: Env, newsId: n
   if (auth instanceof Response) return auth;
   const sql = getSql(env);
   const before = (await sql`SELECT * FROM news_posts WHERE id = ${newsId} LIMIT 1`)[0];
+  if (before?.service_id) {
+    const scope = await assertServiceScope(sql, auth, Number(before.service_id));
+    if (scope instanceof Response) return scope;
+  }
   if (!before) return fail("NOT_FOUND", "뉴스/공지 글을 찾을 수 없습니다.", 404);
   const category = body.category === undefined ? null : oneOf(body.category, NEWS_CATEGORIES);
   const titleValue = body.title === undefined ? null : text(body.title, 255, true);
@@ -363,6 +390,10 @@ export async function adminNewsTranslationUpsertRoute(request: Request, env: Env
   if (!normalizedLocale || normalizedLocale === "ko" || !titleValue || !slug) return fail("VALIDATION_ERROR", "보조 언어, 제목, slug를 확인해주세요.", 422);
   const sql = getSql(env);
   const parent = (await sql`SELECT id, service_id FROM news_posts WHERE id = ${newsId} LIMIT 1`)[0];
+  if (parent?.service_id) {
+    const scope = await assertServiceScope(sql, auth, Number(parent.service_id));
+    if (scope instanceof Response) return scope;
+  }
   if (!parent) return fail("NOT_FOUND", "뉴스/공지 글을 찾을 수 없습니다.", 404);
   try {
     const rows = await sql`

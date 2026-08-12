@@ -1,6 +1,6 @@
-import type { Env } from "../types";
+﻿import type { Env } from "../types";
 import { getSql } from "../lib/db";
-import { consumePublicRateLimit } from "../lib/rate-limit";
+import { consumePublicRateLimit, rateLimitResponse } from "../lib/rate-limit";
 import { fail, ok } from "../lib/response";
 import { email, oneOf, readJson, text } from "../lib/validation";
 import { getRequestId } from "../lib/request";
@@ -24,7 +24,7 @@ export async function publicLocalesRoute(env: Env): Promise<Response> {
   return ok({
     defaultLocale: "ko",
     locales: [
-      { code: "ko", label: "한국어", nativeLabel: "한국어", publishedNewsCount: counts.get("ko") || 0 },
+      { code: "ko", label: "Korean", nativeLabel: "한국어", publishedNewsCount: counts.get("ko") || 0 },
       { code: "en", label: "English", nativeLabel: "English", publishedNewsCount: counts.get("en") || 0 },
       { code: "ja", label: "Japanese", nativeLabel: "日本語", publishedNewsCount: counts.get("ja") || 0 },
       { code: "fr", label: "French", nativeLabel: "Français", publishedNewsCount: counts.get("fr") || 0 },
@@ -79,7 +79,7 @@ export async function publicNewsDetailRoute(request: Request, env: Env, slug: st
   const url = new URL(request.url);
   const locale = oneOf(url.searchParams.get("locale"), LOCALES, "ko") ?? "ko";
   const cleanSlug = text(slug, 255, true);
-  if (!cleanSlug) return fail("VALIDATION_ERROR", "올바른 뉴스 경로가 필요합니다.", 422);
+  if (!cleanSlug) return fail("VALIDATION_ERROR", "?щ컮瑜??댁뒪 寃쎈줈媛 ?꾩슂?⑸땲??", 422);
   const sql = getSql(env);
   const rows = locale === "ko"
     ? await sql`
@@ -102,14 +102,14 @@ export async function publicNewsDetailRoute(request: Request, env: Env, slug: st
         AND t.status = 'published' AND t.published_at <= now()
       LIMIT 1
     `;
-  return rows[0] ? ok({ locale, item: rows[0] }) : fail("NOT_FOUND", "게시물을 찾을 수 없습니다.", 404);
+  return rows[0] ? ok({ locale, item: rows[0] }) : fail("NOT_FOUND", "寃뚯떆臾쇱쓣 李얠쓣 ???놁뒿?덈떎.", 404);
 }
 
 export async function publicSitePageRoute(request: Request, env: Env, pageKey: string): Promise<Response> {
   const url = new URL(request.url);
   const locale = oneOf(url.searchParams.get("locale"), LOCALES, "ko") ?? "ko";
   const key = text(pageKey, 255, true);
-  if (!key) return fail("VALIDATION_ERROR", "올바른 pageKey가 필요합니다.", 422);
+  if (!key) return fail("VALIDATION_ERROR", "?щ컮瑜?pageKey媛 ?꾩슂?⑸땲??", 422);
   const sql = getSql(env);
   const rows = locale === "ko"
     ? await sql`
@@ -133,13 +133,13 @@ export async function publicSitePageRoute(request: Request, env: Env, pageKey: s
         AND t.status = 'published' AND t.published_at <= now()
       ORDER BY ci.sort_order ASC, ci.id ASC
     `;
-  return rows.length ? ok({ locale, pageKey: key, items: rows }) : fail("NOT_FOUND", "공개된 페이지 콘텐츠를 찾을 수 없습니다.", 404);
+  return rows.length ? ok({ locale, pageKey: key, items: rows }) : fail("NOT_FOUND", "怨듦컻???섏씠吏 肄섑뀗痢좊? 李얠쓣 ???놁뒿?덈떎.", 404);
 }
 
 export async function publicInquiryRoute(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  if (!(await consumePublicRateLimit(request, env, "inquiry"))) return fail("RATE_LIMITED", "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.", 429);
+  if (!(await consumePublicRateLimit(request, env, "inquiry"))) return rateLimitResponse("Too many inquiry requests. Please try again later.");
   const body = await readJson(request);
-  if (!body) return fail("INVALID_JSON", "올바른 JSON 요청이 필요합니다.");
+  if (!body) return fail("INVALID_JSON", "?щ컮瑜?JSON ?붿껌???꾩슂?⑸땲??");
   const inquiryType = text(body.inquiryType, 80, true);
   const companyName = text(body.companyName, 255) ?? "";
   const name = text(body.name, 120, true);
@@ -148,7 +148,7 @@ export async function publicInquiryRoute(request: Request, env: Env, ctx: Execut
   const message = text(body.message, 5000, true);
   const locale = oneOf(body.locale, LOCALES, "ko") ?? "ko";
   if (!inquiryType || !name || !emailValue || !message || message.length < 10) {
-    return fail("VALIDATION_ERROR", "필수 입력값을 확인해주세요.", 422);
+    return fail("VALIDATION_ERROR", "?꾩닔 ?낅젰媛믪쓣 ?뺤씤?댁＜?몄슂.", 422);
   }
   const sql = getSql(env);
   const rows = await sql`

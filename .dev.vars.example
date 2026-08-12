@@ -8,6 +8,8 @@ APP_ENV=local
 SESSION_TTL_SECONDS=3600
 PUBLIC_RATE_LIMIT_PER_10_MIN=20
 LOGIN_RATE_LIMIT_PER_10_MIN=10
+PROTECTED_RATE_LIMIT_PER_10_MIN=120
+HIGH_RISK_RATE_LIMIT_PER_10_MIN=30
 
 # Inquiry notification. RESEND_API_KEY is optional locally; without it the inquiry is still saved.
 INQUIRY_NOTIFY_TO=jinbizman@gmail.com
