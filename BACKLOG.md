@@ -934,3 +934,21 @@ This addendum closes the Phase 1 Auth / Platform backlog items against productio
 | GAP-P1-007 Production config, Worker build, and deploy identity verification | IMPLEMENTED / VERIFIED / PRODUCTION PASS | Worker `jinbizman`, version `3eb23635-875c-4036-8b38-d5bd737548e7`, production health 200 |
 
 Known deferred non-blocker: apex `https://jinbizman.com` currently returns 200 directly instead of canonical `www` redirect. This is deferred to Phase 5 SEO/Global or Phase 8 Domain/SSL/SEO verification and is not a Phase 1 Auth / Platform blocker.
+
+## P2-001 Constraint Audit Result - 2026-08-13
+
+Audit artifact: `DB_CONSTRAINT_AUDIT.md`.
+
+P2-001 audit status: IMPLEMENTED / VERIFIED for audit-only scope.
+
+Remediation remains open:
+
+| Gap | Severity | Status | Required follow-up |
+|---|---|---|---|
+| P2-001-GAP-001 `timesheets.wbs_task_id` nullable despite WBS-linked time-record requirement | P0 | GAP | P2-001 Remediation Batch 1 |
+| P2-001-GAP-002 122/151 FK constraints lack matching child-side leading index | P1 | RISK | Index remediation batch, no audit-time migration |
+| P2-001-GAP-003 polymorphic target/source references are application-guarded | P1 | PARTIAL | Application/data consistency review |
+| P2-001-GAP-004 translation public slug uniqueness policy not fully DB-constrained | P1 | PARTIAL | CMS slug policy batch |
+| P2-001-GAP-005 service domain canonical/global policy not fully DB-constrained | P1 | PARTIAL | Domain policy batch |
+
+Current Production data violations detected by P2-001 read-only scans: 0.

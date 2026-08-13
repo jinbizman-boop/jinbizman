@@ -416,3 +416,22 @@ The original DB inventory above is the Phase 0 71-table baseline. Production aft
 - Permissions: 74
 
 The v2.0/Phase 0 71-table baseline is preserved as historical baseline. The current Production table count is 72 because Phase 1 added the mobile auth session table through migration 014.
+
+## P2-001 Constraint Audit Addendum - 2026-08-13
+
+`DB_CONSTRAINT_AUDIT.md` audited the current 72-table Production schema read-only.
+
+Current catalog counts:
+
+- Primary keys: 72
+- Foreign keys: 151
+- UNIQUE constraints: 43
+- CHECK constraints: 246
+- NOT NULL columns: 669
+- Indexes: 422
+- Validated PK/FK/UNIQUE/CHECK constraints: 512/512
+- Tables without primary key: 0
+
+Production data violation scan found 0 current violating rows for the sampled unique, progress, amount, date, self-dependency, auth-session, and smoke-cleanup invariants.
+
+Open remediation gaps are tracked in BACKLOG.md. No DB write, migration, source-code change, or production login was performed for P2-001.
