@@ -1,5 +1,3 @@
-import { pbkdf2 } from "node:crypto";
-
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -20,13 +18,23 @@ async function hmac(secret: string, value: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(value)));
 }
 
-function derivePbkdf2(password: string, salt: Uint8Array, iterations: number, length: number): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    pbkdf2(password, salt, iterations, length, "sha256", (error, derivedKey) => {
-      if (error) reject(error);
-      else resolve(new Uint8Array(derivedKey));
-    });
-  });
+async function derivePbkdf2(password: string, salt: Uint8Array, iterations: number, length: number): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const saltBytes = new Uint8Array(salt.length);
+  saltBytes.set(salt);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt: saltBytes, iterations },
+    key,
+    length * 8
+  );
+  return new Uint8Array(bits);
+}
+
+function equalBytes(actual: Uint8Array, expected: Uint8Array): boolean {
+  if (actual.length !== expected.length) return false;
+  let diff = 0;
+  for (let index = 0; index < actual.length; index += 1) diff |= actual[index] ^ expected[index];
+  return diff === 0;
 }
 
 export async function signJwt(payload: object, secret: string): Promise<string> {
@@ -67,11 +75,9 @@ export async function verifyPassword(password: string, stored: string): Promise<
     const saltBytes = base64UrlDecode(saltText);
     const expected = base64UrlDecode(expectedText);
     const actual = await derivePbkdf2(password, saltBytes, iterations, expected.length);
-    if (actual.length !== expected.length) return false;
-    let diff = 0;
-    for (let index = 0; index < actual.length; index += 1) diff |= actual[index] ^ expected[index];
-    return diff === 0;
-  } catch {
+    return equalBytes(actual, expected);
+  } catch (error) {
+    console.error("password_verify_crypto_failed", error instanceof Error ? error.name : "Error");
     return false;
   }
 }

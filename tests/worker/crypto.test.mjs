@@ -19,6 +19,15 @@ test("admin password verification supports production PBKDF2 hashes", async () =
   assert.equal(await verifyPassword("wrong-password", stored), false);
 });
 
+test("password verification supports legacy 100000 iteration PBKDF2 hashes", async () => {
+  const password = "legacy-password-not-secret";
+  const salt = randomBytes(18);
+  const hash = pbkdf2Sync(password, salt, 100000, 32, "sha256");
+  const stored = `pbkdf2-sha256$100000$${base64Url(salt)}$${base64Url(hash)}`;
+
+  assert.equal(await verifyPassword(password, stored), true);
+});
+
 test("password verification rejects malformed hashes without throwing", async () => {
   assert.equal(await verifyPassword("sample-password-not-secret", ""), false);
   assert.equal(await verifyPassword("sample-password-not-secret", "pbkdf2-sha256$99999$salt$hash"), false);
@@ -26,10 +35,12 @@ test("password verification rejects malformed hashes without throwing", async ()
   assert.equal(await verifyPassword("sample-password-not-secret", "other$210000$salt$hash"), false);
 });
 
-test("worker password verifier uses async PBKDF2 rather than synchronous PBKDF2", async () => {
+test("worker password verifier uses Web Crypto PBKDF2 without node:crypto PBKDF2", async () => {
   const source = await readFile("worker/lib/crypto.ts", "utf8");
-  assert.match(source, /import \{ pbkdf2 \} from "node:crypto"/);
-  assert.match(source, /new Promise/);
+  assert.match(source, /crypto\.subtle\.importKey[\s\S]*PBKDF2/);
+  assert.match(source, /crypto\.subtle\.deriveBits/);
+  assert.doesNotMatch(source, /from "node:crypto"/);
+  assert.doesNotMatch(source, /\bpbkdf2\(/);
   assert.doesNotMatch(source, /pbkdf2Sync/);
 });
 
