@@ -1,4 +1,7 @@
 import { pbkdf2Sync, randomBytes } from "node:crypto";
+import { pbkdf2Async } from "@noble/hashes/pbkdf2.js";
+import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { utf8ToBytes } from "@noble/hashes/utils.js";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -35,11 +38,16 @@ test("password verification rejects malformed hashes without throwing", async ()
   assert.equal(await verifyPassword("sample-password-not-secret", "other$210000$salt$hash"), false);
 });
 
-test("worker password verifier uses node crypto PBKDF2 and timing-safe comparison", async () => {
+test("worker password verifier uses portable noble PBKDF2 without native PBKDF2 APIs", async () => {
   const source = await readFile("worker/lib/crypto.ts", "utf8");
-  assert.match(source, /from "node:crypto"/);
-  assert.match(source, /pbkdf2Sync/);
-  assert.match(source, /timingSafeEqual/);
+  assert.match(source, /@noble\/hashes\/pbkdf2\.js/);
+  assert.match(source, /@noble\/hashes\/sha2\.js/);
+  assert.match(source, /@noble\/hashes\/utils\.js/);
+  assert.match(source, /pbkdf2Async/);
+  assert.doesNotMatch(source, /from "node:crypto"/);
+  assert.doesNotMatch(source, /\bpbkdf2Sync\b/);
+  assert.doesNotMatch(source, /node:crypto[\s\S]*\bpbkdf2\b/);
+  assert.doesNotMatch(source, /timingSafeEqual/);
   assert.doesNotMatch(source, /crypto\.subtle\.deriveBits[\s\S]*PBKDF2/);
 });
 
@@ -63,6 +71,15 @@ test("password verification remains compatible with create-admin hash generation
   const createAdminSource = await readFile("scripts/create-admin.mjs", "utf8");
   assert.match(createAdminSource, /pbkdf2Sync\(ADMIN_PASSWORD, salt, iterations, 32, "sha256"\)/);
   assert.equal(await verifyPassword(password, stored), true);
+});
+
+test("noble PBKDF2 output matches Node SHA-256 reference bytes", async () => {
+  const password = "node-noble-byte-equality-not-secret";
+  const salt = randomBytes(18);
+  const nodeReference = pbkdf2Sync(password, salt, 210000, 32, "sha256");
+  const nobleDerived = await pbkdf2Async(nobleSha256, utf8ToBytes(password), salt, { c: 210000, dkLen: 32 });
+
+  assert.deepEqual(Buffer.from(nobleDerived), nodeReference);
 });
 
 test("JWT sign and verify remains compatible with WebCrypto HMAC", async () => {

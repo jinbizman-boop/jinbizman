@@ -1,4 +1,6 @@
-import { pbkdf2Sync, timingSafeEqual } from "node:crypto";
+import { pbkdf2Async } from "@noble/hashes/pbkdf2.js";
+import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { utf8ToBytes } from "@noble/hashes/utils.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -20,13 +22,15 @@ async function hmac(secret: string, value: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(value)));
 }
 
-function derivePbkdf2(password: string, salt: Uint8Array, iterations: number, length: number): Uint8Array {
-  return pbkdf2Sync(password, salt, iterations, length, "sha256");
+async function derivePbkdf2(password: string, salt: Uint8Array, iterations: number, length: number): Promise<Uint8Array> {
+  return await pbkdf2Async(nobleSha256, utf8ToBytes(password), salt, { c: iterations, dkLen: length });
 }
 
 function equalBytes(actual: Uint8Array, expected: Uint8Array): boolean {
   if (actual.length !== expected.length) return false;
-  return timingSafeEqual(actual, expected);
+  let diff = 0;
+  for (let index = 0; index < actual.length; index += 1) diff |= actual[index] ^ expected[index];
+  return diff === 0;
 }
 
 export async function signJwt(payload: object, secret: string): Promise<string> {
@@ -66,7 +70,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   try {
     const saltBytes = base64UrlDecode(saltText);
     const expected = base64UrlDecode(expectedText);
-    const actual = derivePbkdf2(password, saltBytes, iterations, expected.length);
+    const actual = await derivePbkdf2(password, saltBytes, iterations, expected.length);
     return equalBytes(actual, expected);
   } catch (error) {
     console.error("password_verify_crypto_failed", error instanceof Error ? error.name : "Error");
