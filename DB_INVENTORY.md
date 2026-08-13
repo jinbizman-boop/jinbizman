@@ -401,3 +401,18 @@ Recommended next review phase: P8-003 data verification or targeted P2 data audi
 - [x] DB write 0건
 - [x] Source code 변경 0건
 - [x] Cloudflare 변경 0건
+
+## Phase 1 Production Addendum - 2026-08-13
+
+The original DB inventory above is the Phase 0 71-table baseline. Production after Phase 1 migration 014:
+
+- Database: `neondb`
+- Schema: `public`
+- Public base tables: 72
+- Applied migrations: 14
+- Latest migration: `014_mobile_auth_sessions.sql`
+- `auth_sessions`: present
+- Roles: 22
+- Permissions: 74
+
+The v2.0/Phase 0 71-table baseline is preserved as historical baseline. The current Production table count is 72 because Phase 1 added the mobile auth session table through migration 014.

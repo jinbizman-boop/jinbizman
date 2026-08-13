@@ -324,3 +324,24 @@ Suggested Review Phase: P2
 - [x] DB write 0
 - [x] Cloudflare config change 0
 - [x] Production write request 0
+
+## Phase 1 Closeout Addendum - 2026-08-13
+
+The original API inventory above is the Phase 0 snapshot. Current source registry after Phase 1 Auth / Platform Hardening:
+
+- Method+path contracts: 128
+- Unique paths: 96
+- GET: 61
+- POST: 49
+- PATCH: 16
+- PUT: 2
+- DELETE: 0
+
+Phase 1 Mobile v1 auth contracts now present:
+
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/auth/logout`
+
+Legacy Web auth remains backward compatible under `/api/auth/*`. API contract drift check: `npm run test:api-contract` PASS, 7/7.

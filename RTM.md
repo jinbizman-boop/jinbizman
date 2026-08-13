@@ -347,3 +347,33 @@ This is a Phase 0 measurement snapshot, not a final project completion percentag
 - [x] RTM.md ?ùÏÑ±
 - [x] Source/API/DB/Cloudflare write 0Í±?
 P0 requirement check: PASS. No P0 requirement has an UNMAPPED required axis. Partial P0 items are explicitly recorded for later review and are not treated as completed feature work.
+
+## Phase 1 Final Closeout Addendum - 2026-08-13
+
+This addendum records the Phase 1 Auth / Platform Hardening closeout without rewriting the original Phase 0 RTM snapshot above.
+
+Closeout baseline:
+
+- Git/origin: `13a7626d180e06a38bf751c2bdb763f7ac0eac9d`
+- Worker: `jinbizman`
+- Production Worker version: `3eb23635-875c-4036-8b38-d5bd737548e7`
+- Production DB: Neon `neondb` / `public`
+- Production tables after migration 014: 72
+- Applied migrations: 001 through 014
+- Latest migration: `014_mobile_auth_sessions.sql`
+- Phase 1 closeout document: `PHASE1_CLOSEOUT.md`
+
+Phase 1 requirement/backlog status update:
+
+| Area | Related IDs | Phase 1 Status | Evidence |
+|---|---|---|---|
+| Authentication | `AUTH-001`, `SEC-002`, `SEC-003` | IMPLEMENTED / VERIFIED / PRODUCTION PASS | Legacy Web login 200, secure cookie, authenticated `/api/auth/me` 200, anonymous `/api/auth/me` 401 |
+| Password verification | `SEC-002` | IMPLEMENTED / VERIFIED / PRODUCTION PASS | PBKDF2-SHA256 210000 default, 100000 legacy verification, `@noble/hashes` pure-JS verification, production direct proof TRUE |
+| Mobile auth server contract | `BE-011`, `SEC-004`, `SEC-014`, `MOB-F-001` auth subset | IMPLEMENTED / VERIFIED / PRODUCTION PASS | `/api/v1/auth/login`, `/refresh`, `/me`, `/logout`; rotation/replay/revoke lifecycle PASS |
+| RBAC / scope | `SEC-RBAC-001`, `SEC-RBAC-002`, `SEC-RBAC-003`, `SEC-RBAC-005`, `SEC-RBAC-007` | IMPLEMENTED / VERIFIED / PRODUCTION PASS for Phase 1 protected API/UI boundary | `AUTHORIZATION_MATRIX.md`, `PERMISSION_UX_MATRIX.md`, security/API/worker/react/E2E tests PASS |
+| Origin/CORS/rate limit | `SEC-006`, `SEC-013`, `BE-009`, `TST-005` | IMPLEMENTED / VERIFIED / PRODUCTION PASS | Trusted-origin fail-closed, exact CORS, mobile bearer/no-origin policy, rate-limit/security tests PASS |
+| Secret/config | `SEC-001`, `TST-009`, `REL-002` | IMPLEMENTED / VERIFIED / PRODUCTION PASS | Worker identity recorded, health 200, no secret values committed |
+| Audit | `AUD-001`, `SEC-010`, `BE-008`, `REL-005` | IMPLEMENTED / VERIFIED / PRODUCTION PASS | `AUDIT_POLICY.md`, `AUDIT_MATRIX.md`, high-risk audit and redaction tests PASS |
+| API versioning | `BE-011`, `BE-012` auth subset | IMPLEMENTED / VERIFIED / PRODUCTION PASS | Versioned Mobile v1 auth namespace exists while legacy Web auth remains backward compatible |
+
+Items outside the Phase 1 Auth / Platform boundary remain governed by later phase rows. Native mobile app UI/storage work remains a later mobile phase item even though the server-side Mobile v1 auth contract is production verified.

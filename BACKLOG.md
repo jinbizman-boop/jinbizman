@@ -918,3 +918,19 @@ Phase 0 Exit Criteria:
 - [x] Phase 1 Ï≤??ëÏóÖ ?†Ï†ï
 - [x] BACKLOG.md ?ùÏÑ±
 - [x] source/API/DB/Cloudflare write 0
+
+## Phase 1 Final Closeout Addendum - 2026-08-13
+
+This addendum closes the Phase 1 Auth / Platform backlog items against production evidence. Phase 2 backlog items are not changed.
+
+| Backlog item | Closeout status | Evidence |
+|---|---|---|
+| GAP-P1-001 RBAC scope and permission contract audit | IMPLEMENTED / VERIFIED / PRODUCTION PASS | `AUTHORIZATION_MATRIX.md`, `PERMISSION_UX_MATRIX.md`, worker/security/react/E2E gates PASS |
+| GAP-P1-002 Web/mobile auth boundary and API versioning strategy | IMPLEMENTED / VERIFIED / PRODUCTION PASS | Legacy Web auth retained; `/api/v1/auth/*` mobile lifecycle PASS |
+| GAP-P1-003 Origin, CORS, rate-limit, and API abuse policy hardening | IMPLEMENTED / VERIFIED / PRODUCTION PASS | Trusted-origin fail-closed, exact CORS, mobile bearer/no-origin, rate/security tests PASS |
+| GAP-P1-004 High-risk audit coverage policy | IMPLEMENTED / VERIFIED / PRODUCTION PASS | `AUDIT_POLICY.md`; `AUDIT_MATRIX.md` FULL global audit 54, no identified high-risk unaudited writes |
+| GAP-P1-005 API contract and security regression test foundation | IMPLEMENTED / VERIFIED / PRODUCTION PASS | API contract 7/7, security 29/29, worker 57/57, E2E 91/91 |
+| GAP-P1-006 Admin forbidden and permission-aware UX state | IMPLEMENTED / VERIFIED / PRODUCTION PASS | `PERMISSION_UX_MATRIX.md`, React 31/31, E2E protected-route checks PASS |
+| GAP-P1-007 Production config, Worker build, and deploy identity verification | IMPLEMENTED / VERIFIED / PRODUCTION PASS | Worker `jinbizman`, version `3eb23635-875c-4036-8b38-d5bd737548e7`, production health 200 |
+
+Known deferred non-blocker: apex `https://jinbizman.com` currently returns 200 directly instead of canonical `www` redirect. This is deferred to Phase 5 SEO/Global or Phase 8 Domain/SSL/SEO verification and is not a Phase 1 Auth / Platform blocker.
