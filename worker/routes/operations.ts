@@ -4,6 +4,7 @@ import { assertProjectScope, assertSelfScope, assertTeamScope, hasAnyRole } from
 import { writeAuditLog } from "../lib/audit";
 import { getSql } from "../lib/db";
 import { fail, ok } from "../lib/response";
+import { parseTimesheetSubmission, validateTimesheetWbsProjectLink } from "../lib/timesheets";
 import { oneOf, readJson, text } from "../lib/validation";
 
 const TODO_STATUS = ["todo", "in_progress", "done", "cancelled"] as const;
@@ -464,20 +465,13 @@ export async function timesheetCreateRoute(request: Request, env: Env): Promise<
   if (auth instanceof Response) return auth;
   const body = await readJson(request);
   if (!body) return fail("INVALID_JSON", "올바른 JSON 요청이 필요합니다.");
-  const projectId = integer(body.projectId);
-  const wbsTaskId = body.wbsTaskId ? integer(body.wbsTaskId) : null;
-  const workDate = dateText(body.workDate);
-  const hours = numeric(body.hours, 0.25, 24);
-  const description = text(body.description, 5000) ?? "";
-  const status = oneOf(body.status, ["draft", "submitted"] as const, "submitted") ?? "submitted";
-  if (!projectId || !workDate || !hours) return fail("VALIDATION_ERROR", "프로젝트, 작업일, 시간을 확인해주세요.", 422);
+  const parsed = parseTimesheetSubmission(body);
+  if (!parsed.ok) return fail("VALIDATION_ERROR", "프로젝트, WBS, 작업일, 시간을 확인해주세요.", 422);
+  const { projectId, wbsTaskId, workDate, hours, description, status } = parsed.value;
   const sql = getSql(env);
   const projectScope = await assertProjectScope(sql, auth, projectId);
   if (projectScope instanceof Response) return projectScope;
-  if (wbsTaskId) {
-    const link = await sql`SELECT id FROM wbs_tasks WHERE id = ${wbsTaskId} AND project_id = ${projectId} LIMIT 1`;
-    if (!link[0]) return fail("VALIDATION_ERROR", "선택한 WBS가 프로젝트에 속하지 않습니다.", 422);
-  }
+  if (!await validateTimesheetWbsProjectLink(sql, projectId, wbsTaskId)) return fail("VALIDATION_ERROR", "선택한 WBS가 프로젝트에 속하지 않습니다.", 422);
   const rows = await sql`
     INSERT INTO timesheets (user_id, project_id, wbs_task_id, work_date, hours, description, status)
     VALUES (${auth.id}, ${projectId}, ${wbsTaskId}, ${workDate}, ${hours}, ${description}, ${status})

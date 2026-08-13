@@ -120,18 +120,20 @@ test("authorization and audit matrices cover protected and high-risk routes", as
   }
 });
 
-test("migration and schema regression distinguish current production from planned 014 upgrade", async () => {
+test("migration and schema regression distinguish current production from planned 015 upgrade", async () => {
   const migrations = (await readdir("db/migrations")).filter((name) => /^\d{3}_.*\.sql$/.test(name)).sort();
-  assert.equal(migrations.length, 14);
-  assert.equal(migrations.at(-1), "014_mobile_auth_sessions.sql");
+  assert.equal(migrations.length, 15);
+  assert.equal(migrations.at(-1), "015_timesheets_wbs_required.sql");
   migrations.forEach((migration, index) => {
     assert.equal(migration.slice(0, 3), String(index + 1).padStart(3, "0"));
   });
 
   const dbInventory = await readFile("DB_INVENTORY.md", "utf8");
   const mobileAuthMigration = await readFile("db/migrations/014_mobile_auth_sessions.sql", "utf8");
-  assert.match(dbInventory, /Base tables:\s*71/i);
+  const timesheetWbsMigration = await readFile("db/migrations/015_timesheets_wbs_required.sql", "utf8");
+  assert.match(dbInventory, /Current production base tables:\s*72/i);
   assert.match(mobileAuthMigration, /CREATE TABLE IF NOT EXISTS auth_sessions/i);
+  assert.match(timesheetWbsMigration, /ALTER COLUMN\s+wbs_task_id\s+SET NOT NULL/i);
 });
 
 test("security regression documentation and release-gate source files are present", async () => {

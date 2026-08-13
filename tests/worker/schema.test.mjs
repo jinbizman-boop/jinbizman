@@ -2,14 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 
-test("database has fourteen ordered production migrations", async () => {
+test("database has fifteen ordered production migrations", async () => {
   const files = (await readdir("db/migrations")).filter((name) => name.endsWith(".sql")).sort();
-  assert.equal(files.length, 14);
+  assert.equal(files.length, 15);
   assert.equal(files[0].startsWith("001_"), true);
   assert.equal(files[10].startsWith("011_"), true);
   assert.equal(files[11].startsWith("012_"), true);
   assert.equal(files[12].startsWith("013_"), true);
   assert.equal(files[13].startsWith("014_"), true);
+  assert.equal(files[14].startsWith("015_"), true);
 });
 
 test("runtime rate limit table is part of migration 009", async () => {
@@ -45,7 +46,7 @@ test("workplace operations migration covers collaboration, HR and finance module
 
 test("remaining admin operations migration closes visible ERP module gaps", async () => {
   const files = (await readdir("db/migrations")).filter((name) => name.endsWith(".sql")).sort();
-  assert.equal(files.length, 14);
+  assert.equal(files.length, 15);
   assert.equal(files[12], "013_remaining_admin_operations.sql");
   const sql = await readFile("db/migrations/013_remaining_admin_operations.sql", "utf8");
   for (const table of [
@@ -62,4 +63,11 @@ test("mobile auth migration stores revocable device sessions without plaintext r
   assert.doesNotMatch(sql, /refresh_token\s+TEXT/i);
   assert.match(sql, /revoked_at TIMESTAMPTZ NULL/i);
   assert.match(sql, /rotated_from_session_id BIGINT NULL REFERENCES auth_sessions/i);
+});
+
+test("timesheet WBS requirement migration makes the WBS reference not nullable", async () => {
+  const sql = await readFile("db/migrations/015_timesheets_wbs_required.sql", "utf8");
+  assert.match(sql, /ALTER TABLE\s+timesheets/i);
+  assert.match(sql, /ALTER COLUMN\s+wbs_task_id\s+SET NOT NULL/i);
+  assert.doesNotMatch(sql, /\b(?:UPDATE|DELETE|TRUNCATE|DROP TABLE|DROP COLUMN)\b/i);
 });

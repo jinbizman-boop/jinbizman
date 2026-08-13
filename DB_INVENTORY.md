@@ -435,3 +435,20 @@ Current catalog counts:
 Production data violation scan found 0 current violating rows for the sampled unique, progress, amount, date, self-dependency, auth-session, and smoke-cleanup invariants.
 
 Open remediation gaps are tracked in BACKLOG.md. No DB write, migration, source-code change, or production login was performed for P2-001.
+
+## P2-001 Remediation Batch 1 Addendum - 2026-08-13
+
+Current production base tables: 72
+
+Migration source after Batch 1:
+
+- Source migrations: 15
+- Latest source migration: `015_timesheets_wbs_required.sql`
+- Target applied migrations after Production rollout: 001 through 015
+- Table count impact: unchanged, 72
+- Remediated P0 gap: `timesheets.wbs_task_id` is required for WBS-linked time records
+- DB change scope: `timesheets.wbs_task_id SET NOT NULL` only
+- Data backfill: 0
+- Business row mutation: 0
+
+The Phase 0 71-table baseline and Phase 1 72-table migration-014 addendum above remain historical context. Batch 1 does not add a table; it closes the nullable WBS reference gap identified by P2-001.

@@ -330,3 +330,20 @@ Recommended Batch 1 scope:
 1. Resolve the `timesheets.wbs_task_id` invariant: either make it NOT NULL with existing data precheck or formally document and enforce an alternate non-WBS timesheet policy.
 2. Add focused child-side FK indexes for P0/high-churn auth, WBS, approval, timesheet, expense, and project paths.
 3. Defer polymorphic reference hardening and CMS/domain slug policy to separate P1 batches unless product policy promotes them.
+
+## 16. P2-001 Remediation Batch 1 Addendum - 2026-08-13
+
+Batch 1 target: `timesheets.wbs_task_id` nullable P0 gap only.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Pre-migration null rows | VERIFIED | Production read-only count returned 0 |
+| Migration source | VERIFIED | `015_timesheets_wbs_required.sql` sets `timesheets.wbs_task_id` NOT NULL |
+| Application validation | VERIFIED | Timesheet create rejects missing/null WBS before DB insert |
+| Project/WBS relation validation | VERIFIED | Timesheet create requires selected WBS task to belong to selected project |
+| Table count | VERIFIED | 72 unchanged |
+| P0 remaining after Batch 1 target state | 0 | `P2-001-GAP-001` remediated by migration 015 |
+| P1 remaining | 4 | `P2-001-GAP-002` through `P2-001-GAP-005` remain deferred |
+| P2 remaining | 0 | None |
+
+Batch 1 does not create FK indexes, does not change polymorphic reference policy, and does not modify CMS/domain uniqueness policy.

@@ -952,3 +952,21 @@ Remediation remains open:
 | P2-001-GAP-005 service domain canonical/global policy not fully DB-constrained | P1 | PARTIAL | Domain policy batch |
 
 Current Production data violations detected by P2-001 read-only scans: 0.
+
+## P2-001 Remediation Batch 1 Result - 2026-08-13
+
+Scope: only the P0 nullable timesheet WBS reference gap.
+
+| Gap | Severity | Status | Evidence |
+|---|---|---|---|
+| P2-001-GAP-001 `timesheets.wbs_task_id` nullable despite WBS-linked time-record requirement | P0 | REMEDIATED / VERIFIED | Migration `015_timesheets_wbs_required.sql`; create validation rejects missing/null WBS; pre-migration null count 0 |
+| P2-001-GAP-002 122/151 FK constraints lack matching child-side leading index | P1 | RISK | Deferred to P2-005 Index Tuning |
+| P2-001-GAP-003 polymorphic target/source references are application-guarded | P1 | PARTIAL | Deferred application/data consistency review |
+| P2-001-GAP-004 translation public slug uniqueness policy not fully DB-constrained | P1 | PARTIAL | Deferred CMS slug policy batch |
+| P2-001-GAP-005 service domain canonical/global policy not fully DB-constrained | P1 | PARTIAL | Deferred domain policy batch |
+
+Remaining P2-001 gap counts after Batch 1 target state:
+
+- P0: 0
+- P1: 4
+- P2: 0
