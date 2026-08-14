@@ -2,6 +2,7 @@ import type { AuthUser, Env } from "../types";
 import { getAuthUser, hasPermission } from "../lib/auth";
 import { assertProjectScope, assertServiceScope, assertTeamScope } from "../lib/authorization";
 import { writeAuditLog } from "../lib/audit";
+import { applyApprovalActionAtomic } from "../lib/approval-actions";
 import { getSql } from "../lib/db";
 import { fail, ok } from "../lib/response";
 import { oneOf, readJson, text } from "../lib/validation";
@@ -448,27 +449,16 @@ export async function erpApprovalActionRoute(request: Request, env: Env, documen
   const line = lines[0];
   if (!line) return fail("FORBIDDEN", "현재 사용자의 처리 대기 결재선이 없습니다.", 403);
   const lineStatus = actionType === "approve" ? "approved" : actionType === "reject" ? "rejected" : "request_changes";
-  await sql`
-    INSERT INTO approval_actions (approval_document_id, approval_line_id, approver_user_id, action_type, comment)
-    VALUES (${documentId}, ${Number(line.id)}, ${auth.id}, ${actionType}, ${comment})
-  `;
-  await sql`UPDATE approval_lines SET line_status = ${lineStatus}, acted_at = now(), updated_at = now() WHERE id = ${Number(line.id)}`;
-  if (actionType === "reject") {
-    await sql`UPDATE approval_documents SET status = 'rejected', completed_at = now(), updated_at = now() WHERE id = ${documentId}`;
-  } else if (actionType === "request_changes") {
-    await sql`UPDATE approval_documents SET status = 'submitted', updated_at = now() WHERE id = ${documentId}`;
-  } else {
-    const pending = await sql`SELECT count(*)::int AS count FROM approval_lines WHERE approval_document_id = ${documentId} AND is_required = TRUE AND line_status = 'pending'`;
-    if (Number(pending[0]?.count || 0) === 0) {
-      await sql`UPDATE approval_documents SET status = 'approved', completed_at = now(), updated_at = now() WHERE id = ${documentId}`;
-      if (doc.related_wbs_task_id) {
-        await sql`UPDATE wbs_tasks SET approval_completed_at = now(), updated_at = now() WHERE id = ${Number(doc.related_wbs_task_id)}`;
-      }
-    }
-  }
-  const afterRows = await sql`SELECT * FROM approval_documents WHERE id = ${documentId}`;
-  await writeAuditLog(request, env, auth, { actionType: `approval.${actionType}`, targetType: "approval_document", targetId: documentId, projectId: doc.project_id ? Number(doc.project_id) : null, serviceId: doc.service_id ? Number(doc.service_id) : null, before: doc, after: afterRows[0] });
-  return ok(afterRows[0]);
+  const mutation = await applyApprovalActionAtomic(sql, {
+    documentId,
+    actorUserId: auth.id,
+    actionType,
+    lineStatus,
+    comment,
+  });
+  if (!mutation) return fail("CONFLICT", "Approval line was already processed.", 409);
+  await writeAuditLog(request, env, auth, { actionType: `approval.${actionType}`, targetType: "approval_document", targetId: documentId, projectId: doc.project_id ? Number(doc.project_id) : null, serviceId: doc.service_id ? Number(doc.service_id) : null, before: doc, after: mutation.document });
+  return ok(mutation.document);
 }
 
 export async function erpEvaluationCycleCreateRoute(request: Request, env: Env): Promise<Response> {

@@ -73,7 +73,7 @@ Current source/API contract inventory:
 | Daily report submit | `POST /api/erp/daily-reports` | `daily_reports`, `daily_report_items`, `audit_logs` | YES | One CTE statement for report upsert, item delete, item insert; audit separate | YES for business rows | LOW audit-only | PARTIAL: repeated submit is upsert by user/date/project | Audit separate and non-blocking | PARTIAL | P2 | Keep CTE; add targeted transaction test coverage |
 | Daily log submit | `POST /api/erp/daily-logs` | `daily_logs`, `daily_log_items`, `wbs_tasks`, `audit_logs` | YES | One CTE statement for log upsert, item refresh, WBS progress update; audit separate | YES for business rows | LOW audit-only | PARTIAL: repeated submit is upsert by user/date/project | Audit separate and non-blocking | PARTIAL | P2 | Keep CTE; add targeted WBS progress regression tests |
 | Approval create | `POST /api/erp/approvals` | `approval_documents`, `approval_lines`, `audit_logs` | YES | One CTE statement for document and lines; audit separate | YES for business rows | LOW audit-only | LOW | Audit separate and non-blocking | NONE | P2 | Keep CTE; add route-level failure coverage |
-| Approval action | `POST /api/erp/approvals/:id/actions` | `approval_actions`, `approval_lines`, `approval_documents`, optional `wbs_tasks`, `audit_logs` | YES | Sequential independent statements | NO | YES: action insert, line status, document status, WBS approval marker can diverge | YES: line is selected before insert/update; no row lock/version predicate; duplicate concurrent action is possible | Audit separate and non-blocking | NONE | P0 | Remediate first with one atomic action statement/transaction plus duplicate-action guard |
+| Approval action | `POST /api/erp/approvals/:id/actions` | `approval_actions`, `approval_lines`, `approval_documents`, optional `wbs_tasks`, `audit_logs` | YES | REMEDIATED in Batch 1 with one guarded CTE statement | YES | CLOSED: action insert, line status, document status, and optional WBS approval marker are one statement | CLOSED: `approval_lines` update requires `line_status = 'pending'`; second concurrent action returns no mutation result | Audit separate and non-blocking per policy | PARTIAL | REMEDIATED | Batch 1 complete; keep regression tests |
 | Evaluation score | `POST /api/erp/evaluations/scores` | `evaluation_scores`, `audit_logs` | NO for current single score upsert | Single upsert, audit separate | YES for business row | LOW audit-only | LOW: unique upsert by cycle/evaluatee/evaluator/item | Audit separate and non-blocking | YES | P2 | No transaction remediation required |
 | Evaluation finalize | `POST /api/erp/evaluations/cycles/:id/finalize` | `evaluation_cycles`, reads `evaluation_evidences`, `evaluation_scores`, `audit_logs` | YES for read-check-update consistency | Sequential read counts then update | PARTIAL | LOW for single updated table; audit-only partial | YES: evidence/scores readiness is checked before update and can race with concurrent data changes | Audit separate and non-blocking | NONE | P1 | Fold readiness predicates into conditional `UPDATE ... WHERE EXISTS(...)` or transaction |
 | Expense create | `POST /api/erp/expenses` | `expense_requests`, `audit_logs` | NO for current single request insert | Single insert, audit separate | YES for business row | LOW audit-only | LOW | Audit separate and non-blocking | NONE | P2 | No P2-002 remediation required |
@@ -96,7 +96,7 @@ Current source/API contract inventory:
 | Lead -> Opportunity | NOT APPLICABLE | No current write route found; read inventory only |
 | Opportunity -> Project | NOT APPLICABLE | No current conversion write route found; project creation itself is audited separately |
 | Project / WBS | PARTIAL | Project + owner membership is sequential; WBS single create is safe for current scope |
-| Approval | GAP | Approval create uses CTE, but approval action is sequential and not concurrency-safe |
+| Approval | REMEDIATED/PARTIAL | Approval create uses CTE; approval action was remediated in Batch 1 with one guarded CTE mutation. Audit remains best-effort per policy |
 | Expense / Budget | GAP | Status and budget update share a statement, but stale pre-read status creates double-spend / double-count race |
 | Leave | PARTIAL | Decision uses CTE, but stale pre-read status and balance checks allow concurrent approval risk |
 | Timesheet | PASS/PARTIAL | Submit uses validated WBS and unique upsert; review lacks expected-status guard but does not span tables |
@@ -151,7 +151,7 @@ Current production data corruption detected: 0.
 
 | ID | Severity | Status | Area | Evidence | Recommended action |
 |---|---|---|---|---|---|
-| P2-002-GAP-001 | P0 | GAP | Approval action atomicity/idempotency | `erpApprovalActionRoute` inserts action, updates line, updates document, optionally updates WBS through independent statements | Convert to one transaction or one guarded statement; add duplicate-action guard |
+| P2-002-GAP-001 | P0 | REMEDIATED / VERIFIED | Approval action atomicity/idempotency | Batch 1 added `applyApprovalActionAtomic()`; action insert, pending-line update, document status update, and optional WBS marker now run in one guarded SQL CTE statement | Closed by `fix: make approval actions atomic` |
 | P2-002-GAP-002 | P0 | GAP | Expense/budget concurrency | `expenseUpdateRoute` updates expense and budget in one CTE but uses `before.status` from a prior SELECT and lacks expected-status predicate | Add compare-and-set status transition and budget update guard |
 | P2-002-GAP-003 | P1 | GAP | Project creation bootstrap | Project row and owner `project_members` row are sequential | Use CTE/transaction for project + owner member |
 | P2-002-GAP-004 | P1 | GAP | Service create/update bootstrap | Service/default content types/domains and service/domain update are sequential | Use CTE/transaction for service bootstrap and domain sync |
@@ -164,16 +164,15 @@ Current production data corruption detected: 0.
 
 Gap counts:
 
-- P0: 2
+- P0: 1
 - P1: 6
 - P2: 2
-- Total: 10
+- Total: 9
 
 ## 9. P0/P1/P2 Classification
 
 P0 classification is limited to transaction gaps that can corrupt core approval or financial state even when current production data is clean:
 
-- Approval action can leave action/line/document/WBS approval state split or duplicate under concurrent requests.
 - Expense/budget status update can double-count committed/spent budget amounts under concurrent status transitions.
 
 P1 items are important but either not currently corrupting data, are recoverable, or affect setup/finalization paths that can be remediated after the P0 batch.
@@ -205,4 +204,30 @@ This does not mean transaction remediation is complete. It means transaction bou
 
 Current production data corruption detected by read-only scans: 0.
 
-Next recommended fix batch: Phase 2 - P2-002 Remediation Batch 1, because P0 transaction gaps remain.
+Next recommended fix batch after Batch 1: Phase 2 - P2-002 Remediation Batch 2, because one P0 transaction gap remains.
+
+## 12. Remediation Batch 1 Addendum - 2026-08-14
+
+Approval action remediation updated `POST /api/erp/approvals/:id/actions` to call `applyApprovalActionAtomic()` from `worker/lib/approval-actions.ts`.
+
+Batch 1 evidence:
+
+| Evidence | Status |
+|---|---|
+| Action + line + document mutation is one SQL CTE statement | PASS |
+| Optional WBS approval marker is inside the same SQL statement | PASS |
+| Pending line guard uses `line_status = 'pending'` in the mutation predicate | PASS |
+| Duplicate/concurrent second action returns no mutation result | PASS |
+| Route maps lost race to `409 CONFLICT` | PASS |
+| Audit remains post-commit best-effort per `AUDIT_POLICY.md` | PASS |
+| Migration | 0 |
+| Production approval business write | 0 |
+| Production approval inconsistency scan after remediation | 0 |
+
+Remaining P2-002 gap counts after Batch 1 target state:
+
+- P0: 1
+- P1: 6
+- P2: 2
+
+Next recommended fix batch: Phase 2 - P2-002 Remediation Batch 2, Expense / Budget Atomic Transition.
