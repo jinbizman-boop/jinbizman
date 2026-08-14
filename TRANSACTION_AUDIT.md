@@ -58,8 +58,8 @@ Current source/API contract inventory:
 | DELETE contracts | 0 |
 | Core multi-table / multi-step business flows audited | 11 |
 | Routes needing explicit transaction or stronger single-statement guard | 8 |
-| Routes with current partial commit risk | 4 |
-| Routes with current concurrency/idempotency risk | 6 |
+| Routes with current partial commit risk | 3 |
+| Routes with current concurrency/idempotency risk | 5 |
 
 ## 4. Transaction Matrix
 
@@ -77,7 +77,7 @@ Current source/API contract inventory:
 | Evaluation score | `POST /api/erp/evaluations/scores` | `evaluation_scores`, `audit_logs` | NO for current single score upsert | Single upsert, audit separate | YES for business row | LOW audit-only | LOW: unique upsert by cycle/evaluatee/evaluator/item | Audit separate and non-blocking | YES | P2 | No transaction remediation required |
 | Evaluation finalize | `POST /api/erp/evaluations/cycles/:id/finalize` | `evaluation_cycles`, reads `evaluation_evidences`, `evaluation_scores`, `audit_logs` | YES for read-check-update consistency | Sequential read counts then update | PARTIAL | LOW for single updated table; audit-only partial | YES: evidence/scores readiness is checked before update and can race with concurrent data changes | Audit separate and non-blocking | NONE | P1 | Fold readiness predicates into conditional `UPDATE ... WHERE EXISTS(...)` or transaction |
 | Expense create | `POST /api/erp/expenses` | `expense_requests`, `audit_logs` | NO for current single request insert | Single insert, audit separate | YES for business row | LOW audit-only | LOW | Audit separate and non-blocking | NONE | P2 | No P2-002 remediation required |
-| Expense / budget status update | `PATCH /api/erp/expenses/:id` | `expense_requests`, `project_budgets`, `audit_logs` | YES | One CTE statement for expense + budget update, but uses stale `before.status` from a prior SELECT | PARTIAL | LOW for SQL statement itself; business amount can diverge under race | YES: concurrent status updates can double-increment `spent_amount` / `committed_amount` because `UPDATE expense_requests` lacks expected-status predicate | Audit separate and non-blocking | NONE | P0 | Add compare-and-set status transition guard and budget update in one atomic statement/transaction |
+| Expense / budget status update | `PATCH /api/erp/expenses/:id` | `expense_requests`, `project_budgets`, `audit_logs` | YES | REMEDIATED in Batch 2 with one guarded CTE statement | YES | CLOSED: expense status and budget amount effects are one statement | CLOSED: status transition is guarded by current DB status; second concurrent transition returns no mutation result | Audit separate and non-blocking per policy | PARTIAL | REMEDIATED | Batch 2 complete; keep regression tests |
 | Leave request submit | `POST /api/erp/leave` | `leave_requests`, reads `leave_balances`, `audit_logs` | PARTIAL | Balance checked before insert; request insert single statement | PARTIAL | LOW audit-only | YES: remaining balance is read before insert and can race with concurrent leave requests | Audit separate and non-blocking | NONE | P1 | Move balance guard into conditional insert or transaction when leave approval volume increases |
 | Leave decision | `PATCH /api/erp/leave/:id` | `leave_requests`, `leave_balances`, `audit_logs` | YES | One CTE statement for request + balance update, but uses prior `before.status` and balance read | PARTIAL | LOW for SQL statement itself; balance can diverge under race | YES: concurrent approvals can both pass pre-check and increment `used_days` | Audit separate and non-blocking | NONE | P1 | Add expected-status predicate and balance condition to the atomic update |
 | Timesheet submit | `POST /api/erp/timesheets` | `timesheets`, `audit_logs` | NO for current single-table upsert | Single upsert, audit separate | YES for business row | LOW audit-only | LOW: unique upsert by user/project/WBS/date | Audit separate and non-blocking | YES | P2 | No transaction remediation required after P2-001 Batch 1 |
@@ -97,7 +97,7 @@ Current source/API contract inventory:
 | Opportunity -> Project | NOT APPLICABLE | No current conversion write route found; project creation itself is audited separately |
 | Project / WBS | PARTIAL | Project + owner membership is sequential; WBS single create is safe for current scope |
 | Approval | REMEDIATED/PARTIAL | Approval create uses CTE; approval action was remediated in Batch 1 with one guarded CTE mutation. Audit remains best-effort per policy |
-| Expense / Budget | GAP | Status and budget update share a statement, but stale pre-read status creates double-spend / double-count race |
+| Expense / Budget | REMEDIATED/PARTIAL | Status and budget update now use one guarded CTE mutation. Audit remains best-effort per policy |
 | Leave | PARTIAL | Decision uses CTE, but stale pre-read status and balance checks allow concurrent approval risk |
 | Timesheet | PASS/PARTIAL | Submit uses validated WBS and unique upsert; review lacks expected-status guard but does not span tables |
 | Evaluation finalize | PARTIAL | Finalize readiness checks are outside the update statement |
@@ -142,7 +142,7 @@ Current production data corruption detected: 0.
 | Audit redaction/high-risk route presence | `tests/worker/audit.test.mjs` checks audit helper and high-risk audit documentation | Does not inject audit failure or verify rollback/commit behavior |
 | Timesheets | `tests/worker/timesheets.test.mjs` covers valid WBS, missing/null WBS, project/WBS mismatch helper | Does not test DB transaction behavior |
 | Approval action | High-risk route appears in audit matrix tests | Missing duplicate concurrent action and partial failure tests |
-| Expense/budget | Audit matrix coverage only | Missing concurrent status-transition and budget amount race tests |
+| Expense/budget | `tests/worker/expense-budget-transitions.test.mjs` covers guarded atomic statement, stale/duplicate no-result, project/budget guard, reject no-delta path, and failure injection | Broader real concurrent route-level integration test can be added later |
 | Evaluation finalize | High-risk route appears in audit matrix tests | Missing read-check-update race test |
 | Project/service bootstrap | Audit route coverage only | Missing failure injection between sequential writes |
 | Leave decision | High-risk route appears in audit matrix tests | Missing concurrent approval / balance race test |
@@ -152,7 +152,7 @@ Current production data corruption detected: 0.
 | ID | Severity | Status | Area | Evidence | Recommended action |
 |---|---|---|---|---|---|
 | P2-002-GAP-001 | P0 | REMEDIATED / VERIFIED | Approval action atomicity/idempotency | Batch 1 added `applyApprovalActionAtomic()`; action insert, pending-line update, document status update, and optional WBS marker now run in one guarded SQL CTE statement | Closed by `fix: make approval actions atomic` |
-| P2-002-GAP-002 | P0 | GAP | Expense/budget concurrency | `expenseUpdateRoute` updates expense and budget in one CTE but uses `before.status` from a prior SELECT and lacks expected-status predicate | Add compare-and-set status transition and budget update guard |
+| P2-002-GAP-002 | P0 | REMEDIATED / VERIFIED | Expense/budget concurrency | Batch 2 added `applyExpenseBudgetTransitionAtomic()`; expense status update and budget amount effects now run in one guarded SQL CTE statement using the DB current status and canonical `total_amount` | Closed by `fix: make expense budget transitions atomic` |
 | P2-002-GAP-003 | P1 | GAP | Project creation bootstrap | Project row and owner `project_members` row are sequential | Use CTE/transaction for project + owner member |
 | P2-002-GAP-004 | P1 | GAP | Service create/update bootstrap | Service/default content types/domains and service/domain update are sequential | Use CTE/transaction for service bootstrap and domain sync |
 | P2-002-GAP-005 | P1 | PARTIAL | Leave decision concurrency | Approval/balance checks happen before CTE and do not guard expected status in update | Move status/balance predicates into atomic update |
@@ -164,16 +164,16 @@ Current production data corruption detected: 0.
 
 Gap counts:
 
-- P0: 1
+- P0: 0
 - P1: 6
 - P2: 2
-- Total: 9
+- Total: 8
 
 ## 9. P0/P1/P2 Classification
 
-P0 classification is limited to transaction gaps that can corrupt core approval or financial state even when current production data is clean:
+P0 classification is limited to transaction gaps that can corrupt core approval or financial state even when current production data is clean.
 
-- Expense/budget status update can double-count committed/spent budget amounts under concurrent status transitions.
+All P2-002 P0 transaction gaps are remediated as of Batch 2.
 
 P1 items are important but either not currently corrupting data, are recoverable, or affect setup/finalization paths that can be remediated after the P0 batch.
 
@@ -204,7 +204,7 @@ This does not mean transaction remediation is complete. It means transaction bou
 
 Current production data corruption detected by read-only scans: 0.
 
-Next recommended fix batch after Batch 1: Phase 2 - P2-002 Remediation Batch 2, because one P0 transaction gap remains.
+Next recommended step after Batch 2: Phase 2 - P2-003 Concurrency / Idempotency Audit, because P2-002 P0 transaction gaps are closed and P1/P2 items remain backlog-managed.
 
 ## 12. Remediation Batch 1 Addendum - 2026-08-14
 
@@ -231,3 +231,31 @@ Remaining P2-002 gap counts after Batch 1 target state:
 - P2: 2
 
 Next recommended fix batch: Phase 2 - P2-002 Remediation Batch 2, Expense / Budget Atomic Transition.
+
+## 13. Remediation Batch 2 Addendum - 2026-08-14
+
+Expense/Budget remediation updated `PATCH /api/erp/expenses/:id` to call `applyExpenseBudgetTransitionAtomic()` from `worker/lib/expense-budget-transitions.ts`.
+
+Batch 2 evidence:
+
+| Evidence | Status |
+|---|---|
+| Expense status + budget amount mutation is one SQL CTE statement | PASS |
+| Transition guard uses current DB status inside the mutation | PASS |
+| Budget deltas use DB-generated `expense_requests.total_amount` | PASS |
+| Budget row must match the expense project for budgeted statuses | PASS |
+| Duplicate/concurrent second transition returns no mutation result | PASS |
+| Route maps lost race/stale transition to `409 CONFLICT` | PASS |
+| Rejected/cancelled path does not add budget delta under current source contract | PASS |
+| Audit remains post-commit best-effort per `AUDIT_POLICY.md` | PASS |
+| Migration | 0 |
+| Production expense business write | 0 |
+| Production expense/budget inconsistency scan after remediation | 0 |
+
+Remaining P2-002 gap counts after Batch 2 target state:
+
+- P0: 0
+- P1: 6
+- P2: 2
+
+Next recommended step: Phase 2 - P2-003 Concurrency / Idempotency Audit.

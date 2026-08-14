@@ -3,6 +3,7 @@ import { getAuthUser, hasPermission } from "../lib/auth";
 import { assertProjectScope, assertSelfScope, assertTeamScope, hasAnyRole } from "../lib/authorization";
 import { writeAuditLog } from "../lib/audit";
 import { getSql } from "../lib/db";
+import { applyExpenseBudgetTransitionAtomic, type ExpenseStatus } from "../lib/expense-budget-transitions";
 import { fail, ok } from "../lib/response";
 import { parseTimesheetSubmission, validateTimesheetWbsProjectLink } from "../lib/timesheets";
 import { oneOf, readJson, text } from "../lib/validation";
@@ -660,21 +661,13 @@ export async function expenseUpdateRoute(request: Request, env: Env, id: number)
   }
   if (!before) return fail("NOT_FOUND", "지출 요청을 찾을 수 없습니다.", 404);
   if (String(before.status) === "paid" && status !== "paid") return fail("PRECONDITION_FAILED", "지급 완료된 지출은 상태를 되돌릴 수 없습니다.", 412);
-  const rows = await sql`
-    WITH updated AS (
-      UPDATE expense_requests SET status = ${status}, updated_at = now() WHERE id = ${id} RETURNING *
-    ), budget_update AS (
-      UPDATE project_budgets b SET
-        spent_amount = b.spent_amount + CASE WHEN ${String(before.status) !== "paid"} AND ${status} = 'paid' THEN (SELECT total_amount FROM updated) ELSE 0 END,
-        committed_amount = b.committed_amount + CASE WHEN ${String(before.status) === "draft"} AND ${status} IN ('submitted','approved') THEN (SELECT total_amount FROM updated) ELSE 0 END,
-        updated_at = now()
-      WHERE b.id = (SELECT budget_id FROM updated) AND b.id IS NOT NULL
-      RETURNING b.id
-    )
-    SELECT * FROM updated
-  `;
-  await writeAuditLog(request, env, auth, { actionType: `expense.${status}`, targetType: "expense_request", targetId: id, projectId: before.project_id ? Number(before.project_id) : null, before, after: rows[0] });
-  return ok(rows[0]);
+  const mutation = await applyExpenseBudgetTransitionAtomic(sql, {
+    expenseId: id,
+    nextStatus: status as ExpenseStatus,
+  });
+  if (!mutation) return fail("CONFLICT", "Expense status transition could not be applied.", 409);
+  await writeAuditLog(request, env, auth, { actionType: `expense.${status}`, targetType: "expense_request", targetId: id, projectId: before.project_id ? Number(before.project_id) : null, before, after: mutation.expense });
+  return ok(mutation.expense);
 }
 
 // ---------------------------------------------------------------------------

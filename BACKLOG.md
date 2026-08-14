@@ -1024,3 +1024,26 @@ Remaining P2-002 gap counts after Batch 1 target state:
 - P0: 1
 - P1: 6
 - P2: 2
+
+## P2-002 Remediation Batch 2 Result - 2026-08-14
+
+Scope: only P2-002-GAP-002 expense/budget stale-status race and partial commit risk.
+
+| Gap | Severity | Status | Evidence |
+|---|---|---|---|
+| P2-002-GAP-001 approval action is sequential across `approval_actions`, `approval_lines`, `approval_documents`, and optional `wbs_tasks` | P0 | REMEDIATED / VERIFIED | Closed in Batch 1 |
+| P2-002-GAP-002 expense status/budget update uses stale pre-read status and lacks expected-status guard | P0 | REMEDIATED / VERIFIED | `applyExpenseBudgetTransitionAtomic()` runs expense status transition and budget amount effects in one guarded SQL CTE statement using the DB current status and canonical `total_amount`; duplicate/concurrent second transition returns no mutation result |
+| P2-002-GAP-003 project creation persists project before owner member insert | P1 | GAP | Unchanged |
+| P2-002-GAP-004 service bootstrap/domain sync uses sequential writes | P1 | GAP | Unchanged |
+| P2-002-GAP-005 leave approval/balance checks are not fully guarded in the update predicate | P1 | PARTIAL | Unchanged |
+| P2-002-GAP-006 evaluation finalize readiness is checked before the finalizing update | P1 | PARTIAL | Unchanged |
+| P2-002-GAP-007 inquiry conversion CTE lacks a DB uniqueness guarantee for `leads.inquiry_id` | P1 | PARTIAL | Unchanged |
+| P2-002-GAP-008 transaction failure/race test coverage is missing | P1 | TEST_GAP | Improved for approval and expense/budget; broader transaction test gaps remain |
+| P2-002-GAP-009 audit writes are best-effort and outside business transactions | P2 | PARTIAL | Policy unchanged |
+| P2-002-GAP-010 public inquiry notification is async/best-effort | P2 | PARTIAL | Unchanged |
+
+Remaining P2-002 gap counts after Batch 2 target state:
+
+- P0: 0
+- P1: 6
+- P2: 2
