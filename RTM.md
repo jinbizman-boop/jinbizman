@@ -377,3 +377,31 @@ Phase 1 requirement/backlog status update:
 | API versioning | `BE-011`, `BE-012` auth subset | IMPLEMENTED / VERIFIED / PRODUCTION PASS | Versioned Mobile v1 auth namespace exists while legacy Web auth remains backward compatible |
 
 Items outside the Phase 1 Auth / Platform boundary remain governed by later phase rows. Native mobile app UI/storage work remains a later mobile phase item even though the server-side Mobile v1 auth contract is production verified.
+
+## Phase 2 Final Closeout Addendum - 2026-08-14
+
+This addendum records the Phase 2 DB Integrity & Performance / Platform Data Hardening closeout without rewriting the original RTM snapshot.
+
+Closeout baseline:
+
+- Git/origin before closeout: `83aa5d9627362c0a8ed000f6120e78d7ea68bc5b`
+- Production DB: Neon `neondb` / `public`
+- Production tables: 72
+- Applied migrations: 001 through 018
+- Latest migration: `018_expense_requests_expense_date_id_index.sql`
+- Production indexes: 425
+- Phase 2 closeout document: `PHASE2_CLOSEOUT.md`
+
+Phase 2 requirement/backlog status update:
+
+| Area | Phase 2 Status | Evidence |
+|---|---|---|
+| Constraint integrity | IMPLEMENTED / VERIFIED / G2 PASS for P0 scope | `DB_CONSTRAINT_AUDIT.md`; `timesheets.wbs_task_id` NOT NULL; production invariant counters 0 |
+| Transaction integrity | IMPLEMENTED / VERIFIED / G2 PASS for P0 scope | `TRANSACTION_AUDIT.md`; approval and expense/budget atomic transitions verified |
+| Concurrency / idempotency | IMPLEMENTED / VERIFIED / G2 PASS for P0 scope | `CONCURRENCY_IDEMPOTENCY_AUDIT.md`; leave balance-safe approval verified |
+| Query inventory | IMPLEMENTED / VERIFIED / G2 PASS | `QUERY_CATALOG.md`; 95 / 96 DB-backed routes, 41 query families, 173 raw SQL templates |
+| Index / EXPLAIN | IMPLEMENTED / VERIFIED / G2 PASS | `INDEX_TUNING_BASELINE.md`; 15 / 15 EXPLAIN complete; migrations 016, 017, 018 applied |
+| Retention / soft delete | VERIFIED / POLICY DEFINED / G2 PASS for P0 scope | `DATA_RETENTION.md`; 72 / 72 tables classified; P0 0 |
+| Migration CI readiness | VERIFIED / PARTIAL AUTOMATION / G2 PASS for P0 scope | `MIGRATION_CI_AUDIT.md`; clean install PASS, upgrade PASS, production drift 0; CI automation remains P1 |
+
+Deferred P1/P2 items remain OPEN / DEFERRED and are not marked complete. Phase 3 implementation is not started by this addendum.

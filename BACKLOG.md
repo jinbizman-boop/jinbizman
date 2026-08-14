@@ -1265,3 +1265,32 @@ Remaining P2-007 gap counts:
 - P0: 0
 - P1: 3
 - P2: 2
+
+## Phase 2 Final Exit / G2 Closeout - 2026-08-14
+
+Closeout artifact: `PHASE2_CLOSEOUT.md`.
+
+Phase 2 status: COMPLETE / G2 PASS for DB Integrity & Performance / Platform Data Hardening scope.
+
+Phase 2 P0 blockers closed:
+
+| Area | Status | Evidence |
+|---|---|---|
+| Constraint integrity | CLOSED / VERIFIED | `timesheets.wbs_task_id` is `NOT NULL`; production null count 0 |
+| Transaction integrity | CLOSED / VERIFIED | Approval and expense/budget P0 transaction remediations verified |
+| Concurrency / idempotency | CLOSED / VERIFIED | Leave approval balance double-deduction P0 remediation verified |
+| Index / performance | CLOSED / VERIFIED | 15 / 15 EXPLAIN baseline complete; approved indexes 016, 017, 018 applied and verified |
+| Retention / soft delete | CLOSED / VERIFIED for P0 scope | 72 / 72 tables classified; immediate deletion risk NO |
+| Migration CI | CLOSED / VERIFIED for P0 scope | Clean install, upgrade, runner re-run, failure behavior, and production drift verified |
+
+Remaining Phase 2 follow-up remains OPEN / DEFERRED:
+
+- P2-002 transaction P1/P2 follow-ups.
+- P2-003 concurrency/idempotency P1/P2 follow-ups.
+- P2-004/P2-005 query rewrite candidates: 4 OPEN.
+- P2-006 retention policy/enforcement/cleanup P1/P2 gaps.
+- P2-007 migration CI automation and rollback drill P1/P2 gaps.
+
+No Phase 3 item is marked complete by this closeout.
+
+Next approved phase: Phase 3 - P3-001 Inquiry -> Lead.
