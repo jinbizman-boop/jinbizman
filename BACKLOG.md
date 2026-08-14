@@ -970,3 +970,34 @@ Remaining P2-001 gap counts after Batch 1 target state:
 - P0: 0
 - P1: 4
 - P2: 0
+
+## P2-002 Transaction Audit Result - 2026-08-14
+
+Audit artifact: `TRANSACTION_AUDIT.md`.
+
+P2-002 audit status: IMPLEMENTED / VERIFIED for audit-only scope.
+
+No DB write, migration, source code change, manual deploy, DNS change, or production login was performed.
+
+Production read-only inconsistency scan detected current data corruption: 0.
+
+Remediation remains open:
+
+| Gap | Severity | Status | Required follow-up |
+|---|---|---|---|
+| P2-002-GAP-001 approval action is sequential across `approval_actions`, `approval_lines`, `approval_documents`, and optional `wbs_tasks` | P0 | GAP | P2-002 Remediation Batch 1 |
+| P2-002-GAP-002 expense status/budget update uses stale pre-read status and lacks expected-status guard | P0 | GAP | P2-002 Remediation Batch 1 |
+| P2-002-GAP-003 project creation persists project before owner member insert | P1 | GAP | Later transaction remediation batch |
+| P2-002-GAP-004 service bootstrap/domain sync uses sequential writes | P1 | GAP | Later transaction remediation batch |
+| P2-002-GAP-005 leave approval/balance checks are not fully guarded in the update predicate | P1 | PARTIAL | Later transaction/concurrency remediation |
+| P2-002-GAP-006 evaluation finalize readiness is checked before the finalizing update | P1 | PARTIAL | Later transaction/concurrency remediation |
+| P2-002-GAP-007 inquiry conversion CTE lacks a DB uniqueness guarantee for `leads.inquiry_id` | P1 | PARTIAL | Later idempotency/constraint remediation |
+| P2-002-GAP-008 transaction failure/race test coverage is missing | P1 | TEST_GAP | Add targeted tests before remediation |
+| P2-002-GAP-009 audit writes are best-effort and outside business transactions | P2 | PARTIAL | Keep or formalize policy |
+| P2-002-GAP-010 public inquiry notification is async/best-effort | P2 | PARTIAL | Future queue/idempotency work |
+
+Remaining P2-002 gap counts:
+
+- P0: 2
+- P1: 6
+- P2: 2
