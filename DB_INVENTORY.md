@@ -452,3 +452,21 @@ Migration source after Batch 1:
 - Business row mutation: 0
 
 The Phase 0 71-table baseline and Phase 1 72-table migration-014 addendum above remain historical context. Batch 1 does not add a table; it closes the nullable WBS reference gap identified by P2-001.
+
+## P2-005 Index Tuning Remediation Batch 1 Addendum - 2026-08-14
+
+Current production base tables: 72
+
+Migration source after P2-005 Batch 1:
+
+- Source migrations: 001 through 016
+- Latest migration source: `016_news_posts_list_index.sql`
+- Target applied migrations after Production rollout: 001 through 016
+- Table count impact: unchanged, 72
+- Index count impact: 422 -> 423
+- Added index: `ix_news_posts_status_pinned_published_at` on `news_posts(status, is_pinned DESC, published_at DESC)`
+- Remediated P2-005 candidate: IDX-P2-005-001 public news listing index
+- Data backfill: 0
+- Business row mutation: 0
+
+The remaining P2-005 recommended index candidates are tracked in `BACKLOG.md`: IDX-P2-005-002 for `approval_documents(updated_at DESC)` and IDX-P2-005-003 for `expense_requests(expense_date DESC, id DESC)`.

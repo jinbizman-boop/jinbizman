@@ -348,8 +348,31 @@ Proposed P1 index candidates for the next remediation batch:
 
 | Candidate ID | Query ID | Table | Columns | Status |
 | --- | --- | --- | --- | --- |
-| IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | status, is_pinned DESC, published_at DESC | PROPOSED |
+| IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | status, is_pinned DESC, published_at DESC | APPLIED / VERIFIED in migration 016 |
 | IDX-P2-005-002 | Q-ADM-005 | approval_documents | updated_at DESC | PROPOSED |
 | IDX-P2-005-003 | Q-ERP-012 | expense_requests | expense_date DESC, id DESC | PROPOSED |
 
 P2-005 baseline verdict: PASS.
+
+## 25. P2-005 Remediation Batch 1 Result
+
+Applied candidate:
+
+| Candidate ID | Query ID | Table | Migration | Result |
+| --- | --- | --- | --- | --- |
+| IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | `016_news_posts_list_index.sql` | APPLIED / VERIFIED |
+
+Evidence summary:
+
+- Actual `GET /api/public/news` base query filters `status = 'published'` and `published_at <= now()`, then orders by `is_pinned DESC, published_at DESC`.
+- Existing equivalent index before migration: none.
+- BEFORE EXPLAIN: `ix_news_posts_status` plus explicit Sort.
+- AFTER EXPLAIN: `ix_news_posts_status_pinned_published_at` with no explicit Sort.
+- Production rows changed: 0.
+
+Remaining recommended candidates:
+
+| Candidate ID | Query ID | Table | Status |
+| --- | --- | --- | --- |
+| IDX-P2-005-002 | Q-ADM-005 | approval_documents | PROPOSED |
+| IDX-P2-005-003 | Q-ERP-012 | expense_requests | PROPOSED |

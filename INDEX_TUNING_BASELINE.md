@@ -161,7 +161,7 @@ Observed duplicate-looking existing indexes should be reviewed in a later cleanu
 
 | Candidate ID | Query ID | Table | Columns | Predicate | Include | Reason | Current index gap | Expected benefit | Write cost | Priority | Migration recommended |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | status, is_pinned DESC, published_at DESC | none | none | Public news list filters status and orders by pinned/published. | Existing indexes do not align with `is_pinned DESC, published_at DESC`. | Reduce public list sort work under 100 RPS target. | Low to medium; news writes are admin-frequency. | P1 | YES |
+| IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | status, is_pinned DESC, published_at DESC | none | none | Public news list filters status and orders by pinned/published. | Existing indexes did not align with `is_pinned DESC, published_at DESC`; migration `016_news_posts_list_index.sql` adds `ix_news_posts_status_pinned_published_at`. | BEFORE used `ix_news_posts_status` plus Sort; AFTER uses the composite index with no Sort. | Low to medium; news writes are admin-frequency. | P1 | APPLIED / VERIFIED |
 | IDX-P2-005-002 | Q-ADM-005 | approval_documents | updated_at DESC | none | none | Approval list orders by updated_at and currently sorts after scan. | Existing indexes cover created/submitted/status, not updated_at list order. | Reduce approval inbox/admin list sort at workflow scale. | Medium; approval state changes update this column. | P1 | YES |
 | IDX-P2-005-003 | Q-ERP-012 | expense_requests | expense_date DESC, id DESC | none | none | Finance/global expense list orders by expense_date/id. | Existing indexes start with requester or project/status. | Reduce global finance list sort under finance workflow growth. | Medium; expense creates/status changes touch table. | P1 | YES |
 
@@ -189,7 +189,7 @@ No P0 index candidate was found.
 
 Write cost assessment:
 
-- IDX-P2-005-001: low to medium. News writes are low-frequency admin operations.
+- IDX-P2-005-001: low to medium. News writes are low-frequency admin operations. Applied in P2-005 Remediation Batch 1.
 - IDX-P2-005-002: medium. Approval document status/actions update `updated_at`; index adds write overhead to a workflow table.
 - IDX-P2-005-003: medium. Expense creates and transitions are expected ERP write paths.
 
@@ -199,7 +199,7 @@ None of the proposed candidates target extremely high-write telemetry tables. `a
 
 Recommended remediation batch:
 
-1. Add only the three P1 candidate indexes after approval.
+1. Add the three P1 candidate indexes in separate approved batches.
 2. Re-run EXPLAIN for Q-PUB-003/Q-PUB-004, Q-ADM-005, and Q-ERP-012.
 3. Do not address query-rewrite candidates in the index remediation batch.
 4. Keep P2 deferred candidates open for later scale validation.
@@ -235,3 +235,53 @@ Queries that should move to later query-structure work instead of index DDL:
 P2-005 Index Tuning / EXPLAIN Baseline: PASS.
 
 Remediation required: YES. Three P1 index candidates should move to P2-005 Index Tuning Remediation Batch 1. Four query-rewrite candidates should stay out of index DDL remediation and be handled in a later query-structure/caching batch.
+
+## 20. P2-005 Remediation Batch 1 - 2026-08-14
+
+Target: IDX-P2-005-001 for Q-PUB-003/Q-PUB-004 public news listing.
+
+Actual source query reconfirmed:
+
+- Base locale `GET /api/public/news` filters `news_posts.status = 'published'` and `published_at <= now()`.
+- Results are ordered by `is_pinned DESC, published_at DESC`.
+- Localized listing still joins translations and orders by pinned plus localized/base published timestamp; the `news_posts` side remains aligned with the new base-table prefix.
+
+Production precheck:
+
+- `news_posts` rows before migration: 0.
+- Public indexes before migration: 422.
+- Existing equivalent index: none.
+
+BEFORE EXPLAIN for the base public news list:
+
+- Plan: Limit -> Sort -> Index Scan.
+- Index: `ix_news_posts_status`.
+- Sort key: `is_pinned DESC, published_at DESC`.
+- Cost: 8.17..8.18.
+- Estimated rows: 1.
+- Actual rows: 0.
+- Execution time: 0.055 ms.
+
+Migration:
+
+- `016_news_posts_list_index.sql`
+- `CREATE INDEX ix_news_posts_status_pinned_published_at ON news_posts (status, is_pinned DESC, published_at DESC);`
+- Partial: no.
+- Other candidate indexes created: 0.
+
+AFTER EXPLAIN for the same base public news list:
+
+- Plan: Limit -> Index Scan.
+- Index: `ix_news_posts_status_pinned_published_at`.
+- Sort: none.
+- Cost: 0.14..8.16.
+- Estimated rows: 1.
+- Actual rows: 0.
+- Execution time: 0.056 ms.
+
+Interpretation:
+
+- Current-scale runtime comparison is not meaningful because Production currently has 0 `news_posts` rows.
+- The new index is structurally correct and planner-selected for the actual predicate/order shape.
+- Final classification: VERIFIED_BENEFICIAL for plan shape, with current-scale timing neutral.
+- Remaining recommended candidates: IDX-P2-005-002 and IDX-P2-005-003.
