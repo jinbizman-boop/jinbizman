@@ -540,3 +540,27 @@ Schema implementation observations:
 - SET NULL FK groups: 72
 
 P2-006 identified no immediate P0 production deletion risk. Remaining retention work is policy/enforcement/cleanup remediation and is tracked in `BACKLOG.md`.
+
+## P2-007 Migration CI Audit Addendum - 2026-08-14
+
+Migration CI audit artifact: `MIGRATION_CI_AUDIT.md`
+
+Current production schema baseline remains:
+
+- Source migrations: 001 through 018
+- Latest migration source: `018_expense_requests_expense_date_id_index.sql`
+- Production table count: 72
+- Production index count: 425
+
+Temporary-branch validation confirmed:
+
+- Clean install 001 through 018: PASS
+- Final tables after clean install: 72
+- Final migrations after clean install: 18
+- Final indexes after clean install: 425
+- Upgrade paths 013->014, 014->015, 015->016, 016->017, 017->018, and 013->018: PASS
+- Runner re-run skip behavior: PASS
+- Failure injection: failed migration not marked applied; partial schema residue 0
+- Clean install vs Production catalog drift: 0 functional drift detected
+
+P2-007 identified no P0 migration correctness gap. Migration CI automation gaps are tracked in `BACKLOG.md`.

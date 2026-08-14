@@ -1226,3 +1226,42 @@ Remaining P2-006 gap counts:
 - P0: 0
 - P1: 7
 - P2: 3
+
+## P2-007 Migration CI Audit Result - 2026-08-14
+
+Audit artifact: `MIGRATION_CI_AUDIT.md`.
+
+P2-007 audit status: IMPLEMENTED / VERIFIED for audit-and-validation scope.
+
+No Production migration, Production schema write, existing migration edit, new migration, index change, Worker code change, manual deploy, DNS change, production login, or production business action was performed.
+
+Validation summary:
+
+- Migration files inventoried: 18 / 18
+- Number range: 001 through 018
+- Missing numbers: 0
+- Duplicate numbers: 0
+- Temporary-branch clean install: PASS
+- Clean-install final tables: 72
+- Clean-install final migrations: 18
+- Clean-install final indexes: 425
+- Upgrade paths 013->014, 014->015, 015->016, 016->017, 017->018, 013->018: PASS
+- Runner re-run: all 18 skipped / no duplicate application
+- Failure injection: failed migration not marked applied; partial schema residue 0
+- Production drift: 0 functional drift detected
+
+Remediation remains open:
+
+| Gap | Severity | Status | Required follow-up |
+|---|---|---|---|
+| P2-007-GAP-001 migration clean-install/upgrade validation is not enforced in CI | P1 | GAP | Add migration CI workflow using a temporary DB/branch |
+| P2-007-GAP-002 clean install, upgrade path, re-run, and failure-injection validation are manual | P1 | GAP | Add a non-production migration validation script |
+| P2-007-GAP-003 rollback/restore strategy is not exercised by an automated drill | P1 | GAP | Add rollback readiness runbook and periodic Neon restore/branch drill |
+| P2-007-GAP-004 direct SQL-file replay is not universally idempotent | P2 | RISK | Document and enforce runner-only production migration operation |
+| P2-007-GAP-005 existing tests are static/sentinel checks and do not connect to a DB | P2 | TEST_GAP | Add optional non-production DB migration validation gate |
+
+Remaining P2-007 gap counts:
+
+- P0: 0
+- P1: 3
+- P2: 2
