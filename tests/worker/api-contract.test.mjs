@@ -120,10 +120,10 @@ test("authorization and audit matrices cover protected and high-risk routes", as
   }
 });
 
-test("migration and schema regression distinguish current production from planned 017 upgrade", async () => {
+test("migration and schema regression distinguish current production from planned 018 upgrade", async () => {
   const migrations = (await readdir("db/migrations")).filter((name) => /^\d{3}_.*\.sql$/.test(name)).sort();
-  assert.equal(migrations.length, 17);
-  assert.equal(migrations.at(-1), "017_approval_documents_updated_at_index.sql");
+  assert.equal(migrations.length, 18);
+  assert.equal(migrations.at(-1), "018_expense_requests_expense_date_id_index.sql");
   migrations.forEach((migration, index) => {
     assert.equal(migration.slice(0, 3), String(index + 1).padStart(3, "0"));
   });
@@ -133,6 +133,7 @@ test("migration and schema regression distinguish current production from planne
   const timesheetWbsMigration = await readFile("db/migrations/015_timesheets_wbs_required.sql", "utf8");
   const newsListIndexMigration = await readFile("db/migrations/016_news_posts_list_index.sql", "utf8");
   const approvalRecencyMigration = await readFile("db/migrations/017_approval_documents_updated_at_index.sql", "utf8");
+  const expenseRecencyMigration = await readFile("db/migrations/018_expense_requests_expense_date_id_index.sql", "utf8");
   assert.match(dbInventory, /Current production base tables:\s*72/i);
   assert.match(mobileAuthMigration, /CREATE TABLE IF NOT EXISTS auth_sessions/i);
   assert.match(timesheetWbsMigration, /ALTER COLUMN\s+wbs_task_id\s+SET NOT NULL/i);
@@ -140,6 +141,8 @@ test("migration and schema regression distinguish current production from planne
   assert.match(newsListIndexMigration, /ON news_posts\s*\(\s*status,\s*is_pinned DESC,\s*published_at DESC\s*\)/i);
   assert.match(approvalRecencyMigration, /CREATE INDEX\s+ix_approval_documents_updated_at/i);
   assert.match(approvalRecencyMigration, /ON approval_documents\s*\(\s*updated_at DESC\s*\)/i);
+  assert.match(expenseRecencyMigration, /CREATE INDEX\s+ix_expense_requests_expense_date_id/i);
+  assert.match(expenseRecencyMigration, /ON expense_requests\s*\(\s*expense_date DESC,\s*id DESC\s*\)/i);
 });
 
 test("security regression documentation and release-gate source files are present", async () => {

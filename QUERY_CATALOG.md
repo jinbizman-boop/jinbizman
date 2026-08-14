@@ -350,7 +350,7 @@ Proposed P1 index candidates for the next remediation batch:
 | --- | --- | --- | --- | --- |
 | IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | status, is_pinned DESC, published_at DESC | APPLIED / VERIFIED in migration 016 |
 | IDX-P2-005-002 | Q-ADM-005 | approval_documents | updated_at DESC | APPLIED / VERIFIED in migration 017 |
-| IDX-P2-005-003 | Q-ERP-012 | expense_requests | expense_date DESC, id DESC | PROPOSED |
+| IDX-P2-005-003 | Q-ERP-012 | expense_requests | expense_date DESC, id DESC | APPLIED / VERIFIED in migration 018 |
 
 P2-005 baseline verdict: PASS.
 
@@ -370,11 +370,12 @@ Evidence summary:
 - AFTER EXPLAIN: `ix_news_posts_status_pinned_published_at` with no explicit Sort.
 - Production rows changed: 0.
 
-Remaining recommended candidates:
+Subsequent candidate status:
 
 | Candidate ID | Query ID | Table | Status |
 | --- | --- | --- | --- |
-| IDX-P2-005-003 | Q-ERP-012 | expense_requests | PROPOSED |
+| IDX-P2-005-002 | Q-ADM-005 | approval_documents | APPLIED / VERIFIED |
+| IDX-P2-005-003 | Q-ERP-012 | expense_requests | APPLIED / VERIFIED |
 
 ## 26. P2-005 Remediation Batch 2 Result
 
@@ -393,8 +394,33 @@ Evidence summary:
 - AFTER EXPLAIN: still Seq Scan plus Sort because Production has 0 rows; the index is structurally aligned for scale.
 - Production rows changed: 0.
 
-Remaining recommended candidates:
+Subsequent candidate status:
 
 | Candidate ID | Query ID | Table | Status |
 | --- | --- | --- | --- |
-| IDX-P2-005-003 | Q-ERP-012 | expense_requests | PROPOSED |
+| IDX-P2-005-003 | Q-ERP-012 | expense_requests | APPLIED / VERIFIED |
+
+## 27. P2-005 Remediation Batch 3 Result
+
+Applied candidate:
+
+| Candidate ID | Query ID | Table | Migration | Result |
+| --- | --- | --- | --- | --- |
+| IDX-P2-005-003 | Q-ERP-012 | expense_requests | `018_expense_requests_expense_date_id_index.sql` | APPLIED / VERIFIED |
+
+Evidence summary:
+
+- Actual expense list route is `GET /api/erp/expenses`.
+- The route uses `expenseListRoute`, which orders by `e.expense_date DESC, e.id DESC LIMIT 300`.
+- Existing equivalent index before migration: none.
+- BEFORE EXPLAIN: Sort on `e.expense_date DESC, e.id DESC` after the joined read plan.
+- AFTER EXPLAIN: still Sort at 0-row Production scale; the index is structurally aligned for scale and stable recency ordering.
+- Production rows changed: 0.
+
+P2-005 recommended index candidates:
+
+| Candidate ID | Query ID | Table | Status |
+| --- | --- | --- | --- |
+| IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | APPLIED / VERIFIED |
+| IDX-P2-005-002 | Q-ADM-005 | approval_documents | APPLIED / VERIFIED |
+| IDX-P2-005-003 | Q-ERP-012 | expense_requests | APPLIED / VERIFIED |

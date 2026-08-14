@@ -163,7 +163,7 @@ Observed duplicate-looking existing indexes should be reviewed in a later cleanu
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | status, is_pinned DESC, published_at DESC | none | none | Public news list filters status and orders by pinned/published. | Existing indexes did not align with `is_pinned DESC, published_at DESC`; migration `016_news_posts_list_index.sql` adds `ix_news_posts_status_pinned_published_at`. | BEFORE used `ix_news_posts_status` plus Sort; AFTER uses the composite index with no Sort. | Low to medium; news writes are admin-frequency. | P1 | APPLIED / VERIFIED |
 | IDX-P2-005-002 | Q-ADM-005 | approval_documents | updated_at DESC | none | none | Approval list orders by updated_at and currently sorts after scan. | Existing indexes covered created/submitted/status, not updated_at list order; migration `017_approval_documents_updated_at_index.sql` adds `ix_approval_documents_updated_at`. | Current 0-row table still plans Seq Scan + Sort; the index structurally supports the actual recency order for scale. | Medium; approval state changes update this column. | P1 | APPLIED / VERIFIED |
-| IDX-P2-005-003 | Q-ERP-012 | expense_requests | expense_date DESC, id DESC | none | none | Finance/global expense list orders by expense_date/id. | Existing indexes start with requester or project/status. | Reduce global finance list sort under finance workflow growth. | Medium; expense creates/status changes touch table. | P1 | YES |
+| IDX-P2-005-003 | Q-ERP-012 | expense_requests | expense_date DESC, id DESC | none | none | Finance/global expense list orders by expense_date/id. | Existing indexes started with requester or project/status; migration `018_expense_requests_expense_date_id_index.sql` adds `ix_expense_requests_expense_date_id`. | Current 0-row table still plans Sort after joins; the index structurally supports the actual expense date/id order for scale. | Low to medium; expense creates touch this index, while status-only transitions generally do not change the indexed columns. | P1 | APPLIED / VERIFIED |
 
 No P0 index candidate was found.
 
@@ -191,7 +191,7 @@ Write cost assessment:
 
 - IDX-P2-005-001: low to medium. News writes are low-frequency admin operations. Applied in P2-005 Remediation Batch 1.
 - IDX-P2-005-002: medium. Approval document status/actions update `updated_at`; index adds write overhead to a workflow table. Applied in P2-005 Remediation Batch 2.
-- IDX-P2-005-003: medium. Expense creates and transitions are expected ERP write paths.
+- IDX-P2-005-003: low to medium. Expense creates touch the recency key, while status-only transitions generally do not change `expense_date` or `id`. Applied in P2-005 Remediation Batch 3.
 
 None of the proposed candidates target extremely high-write telemetry tables. `audit_logs` was intentionally excluded because it already has created-at indexes and high write volume would make extra audit indexes expensive.
 
@@ -334,3 +334,51 @@ Interpretation:
 - Write amplification is medium because approval decisions update `approval_documents.updated_at`.
 - Final classification: VERIFIED_STRUCTURALLY_CORRECT.
 - Remaining recommended candidate: IDX-P2-005-003.
+
+## 22. P2-005 Remediation Batch 3 - 2026-08-14
+
+Target: IDX-P2-005-003 for Q-ERP-012 expense request recency listing.
+
+Actual source query reconfirmed:
+
+- `GET /api/erp/expenses` uses `expenseListRoute`.
+- The list query selects from `expense_requests e`, joins requester/project/budget names, applies permission/scope visibility predicates, and orders by `e.expense_date DESC, e.id DESC LIMIT 300`.
+- There is no current status/project/budget/requester/date-range filter parameter in the list route, so the original date/id recency candidate remains the correct minimal candidate.
+- `id DESC` is the actual source tie-breaker for stable ordering when multiple rows share the same `expense_date`.
+
+Production precheck:
+
+- `expense_requests` rows before migration: 0.
+- Public indexes before migration: 424.
+- Existing equivalent index: none.
+
+BEFORE EXPLAIN for the representative global expense list:
+
+- Plan: Limit -> Sort -> Hash Left Join.
+- Sort key: `e.expense_date DESC, e.id DESC`.
+- Cost: 36.65..36.87.
+- Estimated rows: 90.
+- Actual rows: not captured for the joined plan.
+
+Migration:
+
+- `018_expense_requests_expense_date_id_index.sql`
+- `CREATE INDEX ix_expense_requests_expense_date_id ON expense_requests (expense_date DESC, id DESC);`
+- Other candidate indexes created: 0.
+- `approval_documents` and `news_posts` index changes: 0.
+
+AFTER EXPLAIN for the same representative query:
+
+- Plan: Limit -> Sort -> Hash Left Join.
+- Sort key: `e.expense_date DESC, e.id DESC`.
+- Cost: 36.65..36.87.
+- Estimated rows: 90.
+- Actual rows: not captured for the joined plan.
+
+Interpretation:
+
+- Current-scale planner choice is not meaningful because Production currently has 0 `expense_requests` rows.
+- The new index is structurally correct for the actual `ORDER BY e.expense_date DESC, e.id DESC LIMIT 300` path.
+- Write amplification is low to medium because expense creates touch the recency key, while status-only transitions generally do not update the indexed columns.
+- Final classification: VERIFIED_STRUCTURALLY_CORRECT.
+- Remaining recommended index candidates: 0.

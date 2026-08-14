@@ -488,3 +488,21 @@ Migration source after P2-005 Batch 2:
 - Business row mutation: 0
 
 The remaining P2-005 recommended index candidate is tracked in `BACKLOG.md`: IDX-P2-005-003 for `expense_requests(expense_date DESC, id DESC)`.
+
+## P2-005 Index Tuning Remediation Batch 3 Addendum - 2026-08-14
+
+Current production base tables: 72
+
+Migration source after P2-005 Batch 3:
+
+- Source migrations: 001 through 018
+- Latest migration source: `018_expense_requests_expense_date_id_index.sql`
+- Target applied migrations after Production rollout: 001 through 018
+- Table count impact: unchanged, 72
+- Index count impact: 424 -> 425
+- Added index: `ix_expense_requests_expense_date_id` on `expense_requests(expense_date DESC, id DESC)`
+- Remediated P2-005 candidate: IDX-P2-005-003 expense request recency index
+- Data backfill: 0
+- Business row mutation: 0
+
+All P2-005 recommended index candidates are now applied and verified. Query rewrite candidates remain tracked separately in `BACKLOG.md`.
