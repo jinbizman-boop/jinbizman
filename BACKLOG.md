@@ -1047,3 +1047,37 @@ Remaining P2-002 gap counts after Batch 2 target state:
 - P0: 0
 - P1: 6
 - P2: 2
+
+## P2-003 Concurrency / Idempotency Audit Result - 2026-08-14
+
+Audit artifact: `CONCURRENCY_IDEMPOTENCY_AUDIT.md`.
+
+P2-003 audit status: IMPLEMENTED / VERIFIED for audit-only scope.
+
+No DB write, migration, source code change, manual deploy, DNS change, production login, or production business action was performed.
+
+Production read-only duplicate scan detected current duplicate corruption: 0.
+
+Remediation remains open:
+
+| Gap | Severity | Status | Required follow-up |
+|---|---|---|---|
+| P2-003-GAP-001 leave decision can double-deduct annual balance on duplicate/concurrent approval | P0 | GAP | P2-003 Remediation Batch 1 |
+| P2-003-GAP-002 public inquiry create lacks application idempotency/dedupe | P1 | GAP | Later idempotency remediation |
+| P2-003-GAP-003 inquiry conversion lacks DB uniqueness on `leads.inquiry_id` | P1 | PARTIAL | Later idempotency/constraint remediation |
+| P2-003-GAP-004 expense create can duplicate financial requests on mobile retry | P1 | GAP | Later explicit idempotency remediation |
+| P2-003-GAP-005 approval document create can duplicate document/lines on retry | P1 | GAP | Later explicit idempotency remediation |
+| P2-003-GAP-006 leave request duplicate/overlap policy is not DB- or app-enforced | P1 | POLICY_GAP | Define policy, then remediate |
+| P2-003-GAP-007 attendance correction decision has stale pre-read without update predicate | P1 | PARTIAL | Later state-guard remediation |
+| P2-003-GAP-008 evaluation finalize readiness/status is pre-read before update | P1 | PARTIAL | Later guarded finalize remediation |
+| P2-003-GAP-009 project/service bootstrap creates are not retry-safe across all side effects | P1 | GAP | Later create/bootstrap idempotency remediation |
+| P2-003-GAP-010 resource allocation percentage cap can race | P1 | PARTIAL | Later atomic cap guard |
+| P2-003-GAP-011 service deployment request can duplicate requested history | P1 | GAP | Add source/version idempotency before external deploy integration |
+| P2-003-GAP-012 async notification/email event dedupe is incomplete | P2 | PARTIAL | Future queue/event idempotency work |
+| P2-003-GAP-013 low-risk admin/editor creates are duplicate-by-design | P2 | NOT APPLICABLE | No remediation unless product policy changes |
+
+Remaining P2-003 gap counts:
+
+- P0: 1
+- P1: 10
+- P2: 2
