@@ -1145,3 +1145,44 @@ Remaining P2-004 gap counts:
 - P0: 0
 - P1: 7
 - P2: 3
+
+## P2-005 Index Tuning / EXPLAIN Baseline Result - 2026-08-14
+
+Baseline artifact: `INDEX_TUNING_BASELINE.md`.
+
+P2-005 EXPLAIN baseline status: IMPLEMENTED / VERIFIED for analysis-only scope.
+
+No DB write, CREATE INDEX, DROP INDEX, migration, source code change, manual deploy, DNS change, production login, or production business action was performed.
+
+EXPLAIN coverage:
+
+- HIGH: 6 / 6
+- MEDIUM: 6 / 6
+- LOW: 3 / 3
+- Total: 15 / 15
+
+Index remediation candidates:
+
+| Candidate | Severity | Status | Required follow-up |
+|---|---|---|---|
+| IDX-P2-005-001 news public list index on `news_posts(status, is_pinned DESC, published_at DESC)` | P1 | PROPOSED | P2-005 Index Tuning Remediation Batch 1 |
+| IDX-P2-005-002 approval list index on `approval_documents(updated_at DESC)` | P1 | PROPOSED | P2-005 Index Tuning Remediation Batch 1 |
+| IDX-P2-005-003 expense global list index on `expense_requests(expense_date DESC, id DESC)` | P1 | PROPOSED | P2-005 Index Tuning Remediation Batch 1 |
+
+Query rewrite candidates retained outside index remediation:
+
+| Query | Severity | Status | Required follow-up |
+|---|---|---|---|
+| Q-ERP-006 todo WBS sync/list read-path mutation | P1 | QUERY_REWRITE_CANDIDATE | Later query-structure remediation |
+| Q-ADM-001 dashboard aggregate counts | P1 | QUERY_REWRITE_CANDIDATE | Later dashboard summary/cache review |
+| Q-ADM-003 project/WBS aggregate list | P1 | QUERY_REWRITE_CANDIDATE | Later project/WBS query rewrite review |
+| Q-PUB-001 public locale aggregate | P1 | QUERY_REWRITE_CANDIDATE | Later public cache/query rewrite review |
+
+Deferred/no-change results:
+
+- P0 index candidates: 0
+- P1 proposed index candidates: 3
+- P2 proposed index candidates: 0
+- Existing-index-sufficient candidates: 4
+- Deferred-until-scale candidates: 2
+- No-change candidates: 2

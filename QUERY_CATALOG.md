@@ -321,3 +321,35 @@ P2-004 Query Inventory: PASS.
 Meaning: current API SQL/query patterns, filter/sort/pagination behavior, existing index support, growth-risk hotspots, and P2-005 EXPLAIN candidate queries have been inventoried. This does not mean indexes are fully tuned; it means P2-005 has a bounded, evidence-based starting set.
 
 Next recommended step: Phase 2 - P2-005 Index Tuning / EXPLAIN Baseline.
+
+## 24. P2-005 EXPLAIN Baseline Result
+
+P2-005 baseline artifact: `INDEX_TUNING_BASELINE.md`.
+
+EXPLAIN coverage:
+
+- HIGH: 6 / 6
+- MEDIUM: 6 / 6
+- LOW: 3 / 3
+- Total: 15 / 15
+
+Final classification:
+
+| Classification | Count | Query IDs |
+| --- | ---: | --- |
+| INDEX_REQUIRED | 0 | none |
+| INDEX_RECOMMENDED | 3 | Q-PUB-003/Q-PUB-004, Q-ADM-005, Q-ERP-012 |
+| EXISTING_INDEX_SUFFICIENT | 4 | Q-SYS-001, Q-ERP-014, Q-PUB-005/Q-PUB-006, Q-ERP-010 |
+| DEFER_UNTIL_SCALE | 2 | Q-ERP-009, Q-CMS-001 |
+| QUERY_REWRITE_CANDIDATE | 4 | Q-ERP-006, Q-ADM-001, Q-ADM-003, Q-PUB-001 |
+| NO_CHANGE | 2 | Q-SYS-004, Q-ADM-010 |
+
+Proposed P1 index candidates for the next remediation batch:
+
+| Candidate ID | Query ID | Table | Columns | Status |
+| --- | --- | --- | --- | --- |
+| IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | status, is_pinned DESC, published_at DESC | PROPOSED |
+| IDX-P2-005-002 | Q-ADM-005 | approval_documents | updated_at DESC | PROPOSED |
+| IDX-P2-005-003 | Q-ERP-012 | expense_requests | expense_date DESC, id DESC | PROPOSED |
+
+P2-005 baseline verdict: PASS.
