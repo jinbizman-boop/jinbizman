@@ -506,3 +506,37 @@ Migration source after P2-005 Batch 3:
 - Business row mutation: 0
 
 All P2-005 recommended index candidates are now applied and verified. Query rewrite candidates remain tracked separately in `BACKLOG.md`.
+
+## P2-006 Retention / Soft Delete Audit Addendum - 2026-08-14
+
+Current production base tables: 72
+
+Retention audit artifact: `DATA_RETENTION.md`
+
+Current production schema baseline remains:
+
+- Source migrations: 001 through 018
+- Latest migration source: `018_expense_requests_expense_date_id_index.sql`
+- Table count: 72
+- Index count: 425
+
+P2-006 classified retention, PII presence, delete strategy, archive/immutable/TTL behavior, FK delete risk, polymorphic orphan risk, and current lifecycle-state coverage for 72/72 production tables.
+
+Production read-only scan summary:
+
+- Expired auth sessions: 0
+- Notifications older than 90 days: 0
+- Expired API rate-limit rows older than 1 day: 0
+- Retired users: 0
+- Old audit/login/email rows beyond 3-year sample windows: 0
+- Sampled orphan attachment/comment candidates: 0
+
+Schema implementation observations:
+
+- Tables with `deleted_at`, `deleted_by`, `is_deleted`, `archived_at`, or `is_archived`: 0
+- Tables with lifecycle columns such as `status`, `is_active`, `revoked_at`, or `expires_at`: 37
+- CASCADE FK groups: 63
+- RESTRICT/NO ACTION FK groups: 6
+- SET NULL FK groups: 72
+
+P2-006 identified no immediate P0 production deletion risk. Remaining retention work is policy/enforcement/cleanup remediation and is tracked in `BACKLOG.md`.

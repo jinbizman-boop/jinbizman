@@ -1186,3 +1186,43 @@ Deferred/no-change results:
 - Existing-index-sufficient candidates: 4
 - Deferred-until-scale candidates: 2
 - No-change candidates: 2
+
+## P2-006 Retention / Soft Delete Audit Result - 2026-08-14
+
+Audit artifact: `DATA_RETENTION.md`.
+
+P2-006 audit status: IMPLEMENTED / VERIFIED for audit-and-policy-definition scope.
+
+No DB write, migration, delete, update, source-code change, manual deploy, DNS change, production login, or production business action was performed.
+
+Retention inventory summary:
+
+- Production tables classified: 72 / 72
+- Permanent / immutable retention: 1
+- 5-year retention: 11
+- 3-year retention: 49
+- 90-day retention: 1
+- Ephemeral/window retention: 2
+- Long-term/archive-policy retention: 8
+- Fully undefined table retention: 0
+
+Remediation remains open:
+
+| Gap | Severity | Status | Required follow-up |
+|---|---|---|---|
+| P2-006-GAP-001 TTL cleanup is defined but not implemented for API rate limits, auth sessions, and notifications | P1 | GAP | P2-006 cleanup remediation after policy approval |
+| P2-006-GAP-002 append-only records lack DB-level immutability enforcement | P1 | GAP | Define immutable retention delete/update guard for audit/action/change/delivery trails |
+| P2-006-GAP-003 parent hard-delete cascade paths can remove important user/project/service/approval/evaluation history | P1 | GAP | Require soft-delete/archive-first before enabling parent delete routes |
+| P2-006-GAP-004 polymorphic references can become orphaned if targets are hard-deleted | P1 | GAP | Define tombstone/orphan cleanup behavior for attachments/comments/notifications/audit logs |
+| P2-006-GAP-005 R2 attachment object lifecycle is not fully synchronized with DB retention policy | P1 | GAP | Define DB/R2 retention, object cleanup, and audit behavior |
+| P2-006-GAP-006 PII anonymization/masking workflow is not implemented | P1 | GAP | Define masking/anonymization policy for retired users, CRM, workplace, evaluation, finance, email, login, and audit data |
+| P2-006-GAP-007 finance evidence retention may need stricter legal/accounting policy than default project retention | P1 | POLICY_REVIEW_REQUIRED | Confirm finance retention policy before cleanup |
+| P2-006-GAP-008 public URL/content tombstone policy is not fully defined | P2 | GAP | Define archive/tombstone/redirect behavior for public content |
+| P2-006-GAP-009 long-term archive scale strategy is deferred | P2 | GAP | Later archive/export/partition strategy for high-growth history |
+| P2-006-GAP-010 config/template history policy is incomplete | P2 | GAP | Define version/archive convention for low-risk templates/config |
+
+Remaining P2-006 gap counts:
+
+- P0: 0
+- P1: 7
+- P2: 3
