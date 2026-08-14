@@ -1166,7 +1166,7 @@ Index remediation candidates:
 | Candidate | Severity | Status | Required follow-up |
 |---|---|---|---|
 | IDX-P2-005-001 news public list index on `news_posts(status, is_pinned DESC, published_at DESC)` | P1 | APPLIED / VERIFIED | Migration `016_news_posts_list_index.sql`; BEFORE plan used `ix_news_posts_status` plus Sort, AFTER plan uses `ix_news_posts_status_pinned_published_at` with no Sort |
-| IDX-P2-005-002 approval list index on `approval_documents(updated_at DESC)` | P1 | PROPOSED | P2-005 Index Tuning Remediation Batch 2 |
+| IDX-P2-005-002 approval list index on `approval_documents(updated_at DESC)` | P1 | APPLIED / VERIFIED | Migration `017_approval_documents_updated_at_index.sql`; current 0-row table still plans Seq Scan + Sort, but the index structurally supports the actual `ORDER BY updated_at DESC LIMIT 200` route |
 | IDX-P2-005-003 expense global list index on `expense_requests(expense_date DESC, id DESC)` | P1 | PROPOSED | Later P2-005 remediation batch |
 
 Query rewrite candidates retained outside index remediation:

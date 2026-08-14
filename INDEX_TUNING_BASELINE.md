@@ -162,7 +162,7 @@ Observed duplicate-looking existing indexes should be reviewed in a later cleanu
 | Candidate ID | Query ID | Table | Columns | Predicate | Include | Reason | Current index gap | Expected benefit | Write cost | Priority | Migration recommended |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | status, is_pinned DESC, published_at DESC | none | none | Public news list filters status and orders by pinned/published. | Existing indexes did not align with `is_pinned DESC, published_at DESC`; migration `016_news_posts_list_index.sql` adds `ix_news_posts_status_pinned_published_at`. | BEFORE used `ix_news_posts_status` plus Sort; AFTER uses the composite index with no Sort. | Low to medium; news writes are admin-frequency. | P1 | APPLIED / VERIFIED |
-| IDX-P2-005-002 | Q-ADM-005 | approval_documents | updated_at DESC | none | none | Approval list orders by updated_at and currently sorts after scan. | Existing indexes cover created/submitted/status, not updated_at list order. | Reduce approval inbox/admin list sort at workflow scale. | Medium; approval state changes update this column. | P1 | YES |
+| IDX-P2-005-002 | Q-ADM-005 | approval_documents | updated_at DESC | none | none | Approval list orders by updated_at and currently sorts after scan. | Existing indexes covered created/submitted/status, not updated_at list order; migration `017_approval_documents_updated_at_index.sql` adds `ix_approval_documents_updated_at`. | Current 0-row table still plans Seq Scan + Sort; the index structurally supports the actual recency order for scale. | Medium; approval state changes update this column. | P1 | APPLIED / VERIFIED |
 | IDX-P2-005-003 | Q-ERP-012 | expense_requests | expense_date DESC, id DESC | none | none | Finance/global expense list orders by expense_date/id. | Existing indexes start with requester or project/status. | Reduce global finance list sort under finance workflow growth. | Medium; expense creates/status changes touch table. | P1 | YES |
 
 No P0 index candidate was found.
@@ -190,7 +190,7 @@ No P0 index candidate was found.
 Write cost assessment:
 
 - IDX-P2-005-001: low to medium. News writes are low-frequency admin operations. Applied in P2-005 Remediation Batch 1.
-- IDX-P2-005-002: medium. Approval document status/actions update `updated_at`; index adds write overhead to a workflow table.
+- IDX-P2-005-002: medium. Approval document status/actions update `updated_at`; index adds write overhead to a workflow table. Applied in P2-005 Remediation Batch 2.
 - IDX-P2-005-003: medium. Expense creates and transitions are expected ERP write paths.
 
 None of the proposed candidates target extremely high-write telemetry tables. `audit_logs` was intentionally excluded because it already has created-at indexes and high write volume would make extra audit indexes expensive.
@@ -285,3 +285,52 @@ Interpretation:
 - The new index is structurally correct and planner-selected for the actual predicate/order shape.
 - Final classification: VERIFIED_BENEFICIAL for plan shape, with current-scale timing neutral.
 - Remaining recommended candidates: IDX-P2-005-002 and IDX-P2-005-003.
+
+## 21. P2-005 Remediation Batch 2 - 2026-08-14
+
+Target: IDX-P2-005-002 for Q-ADM-005 approval document recency listing.
+
+Actual source query reconfirmed:
+
+- `GET /api/admin/approvals` and `GET /api/erp/approvals` both use `adminApprovalsRoute`.
+- The list query selects from `approval_documents d`, applies permission/scope visibility predicates, and orders by `updated_at DESC LIMIT 200`.
+- There is no current status/project/service/requester filter parameter in the list route, so the original single-column recency candidate remains the correct minimal candidate.
+
+Production precheck:
+
+- `approval_documents` rows before migration: 0.
+- Public indexes before migration: 423.
+- Existing equivalent index: none.
+
+BEFORE EXPLAIN for the representative global approval list:
+
+- Plan: Limit -> Sort -> Seq Scan.
+- Sort key: `updated_at DESC`.
+- Cost: 12.85..13.02.
+- Estimated rows: 70.
+- Actual rows: 0.
+- Execution time: 0.054 ms.
+
+Migration:
+
+- `017_approval_documents_updated_at_index.sql`
+- `CREATE INDEX ix_approval_documents_updated_at ON approval_documents (updated_at DESC);`
+- Other candidate indexes created: 0.
+- `expense_requests` index changes: 0.
+
+AFTER EXPLAIN for the same representative query:
+
+- Plan: Limit -> Sort -> Seq Scan.
+- Sort key: `updated_at DESC`.
+- Cost: 12.85..13.02.
+- Estimated rows: 70.
+- Actual rows: 0.
+- Execution time: 0.040 ms.
+
+Interpretation:
+
+- Current-scale runtime and planner choice are not meaningful because Production currently has 0 `approval_documents` rows.
+- The new index is structurally correct for the actual `ORDER BY updated_at DESC LIMIT 200` path.
+- Write amplification is medium because approval decisions update `approval_documents.updated_at`.
+- Final classification: VERIFIED_STRUCTURALLY_CORRECT.
+- Remaining recommended candidate: IDX-P2-005-003.

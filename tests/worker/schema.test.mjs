@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 
-test("database has sixteen ordered production migrations", async () => {
+test("database has seventeen ordered production migrations", async () => {
   const files = (await readdir("db/migrations")).filter((name) => name.endsWith(".sql")).sort();
-  assert.equal(files.length, 16);
+  assert.equal(files.length, 17);
   assert.equal(files[0].startsWith("001_"), true);
   assert.equal(files[10].startsWith("011_"), true);
   assert.equal(files[11].startsWith("012_"), true);
@@ -12,6 +12,7 @@ test("database has sixteen ordered production migrations", async () => {
   assert.equal(files[13].startsWith("014_"), true);
   assert.equal(files[14].startsWith("015_"), true);
   assert.equal(files[15].startsWith("016_"), true);
+  assert.equal(files[16].startsWith("017_"), true);
 });
 
 test("runtime rate limit table is part of migration 009", async () => {
@@ -47,7 +48,7 @@ test("workplace operations migration covers collaboration, HR and finance module
 
 test("remaining admin operations migration closes visible ERP module gaps", async () => {
   const files = (await readdir("db/migrations")).filter((name) => name.endsWith(".sql")).sort();
-  assert.equal(files.length, 16);
+  assert.equal(files.length, 17);
   assert.equal(files[12], "013_remaining_admin_operations.sql");
   const sql = await readFile("db/migrations/013_remaining_admin_operations.sql", "utf8");
   for (const table of [
@@ -79,4 +80,12 @@ test("public news list migration adds only the intended composite index", async 
   assert.match(sql, /ON news_posts\s*\(\s*status,\s*is_pinned DESC,\s*published_at DESC\s*\)/i);
   assert.doesNotMatch(sql, /\b(?:DROP INDEX|REINDEX|UPDATE|DELETE|TRUNCATE|DROP TABLE|DROP COLUMN|ALTER TABLE)\b/i);
   assert.doesNotMatch(sql, /\b(?:approval_documents|expense_requests)\b/i);
+});
+
+test("approval document recency migration adds only the intended updated-at index", async () => {
+  const sql = await readFile("db/migrations/017_approval_documents_updated_at_index.sql", "utf8");
+  assert.match(sql, /CREATE INDEX\s+ix_approval_documents_updated_at/i);
+  assert.match(sql, /ON approval_documents\s*\(\s*updated_at DESC\s*\)/i);
+  assert.doesNotMatch(sql, /\b(?:DROP INDEX|REINDEX|UPDATE|DELETE|TRUNCATE|DROP TABLE|DROP COLUMN|ALTER TABLE)\b/i);
+  assert.doesNotMatch(sql, /\bexpense_requests\b/i);
 });

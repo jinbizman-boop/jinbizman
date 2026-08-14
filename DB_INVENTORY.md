@@ -470,3 +470,21 @@ Migration source after P2-005 Batch 1:
 - Business row mutation: 0
 
 The remaining P2-005 recommended index candidates are tracked in `BACKLOG.md`: IDX-P2-005-002 for `approval_documents(updated_at DESC)` and IDX-P2-005-003 for `expense_requests(expense_date DESC, id DESC)`.
+
+## P2-005 Index Tuning Remediation Batch 2 Addendum - 2026-08-14
+
+Current production base tables: 72
+
+Migration source after P2-005 Batch 2:
+
+- Source migrations: 001 through 017
+- Latest migration source: `017_approval_documents_updated_at_index.sql`
+- Target applied migrations after Production rollout: 001 through 017
+- Table count impact: unchanged, 72
+- Index count impact: 423 -> 424
+- Added index: `ix_approval_documents_updated_at` on `approval_documents(updated_at DESC)`
+- Remediated P2-005 candidate: IDX-P2-005-002 approval document recency index
+- Data backfill: 0
+- Business row mutation: 0
+
+The remaining P2-005 recommended index candidate is tracked in `BACKLOG.md`: IDX-P2-005-003 for `expense_requests(expense_date DESC, id DESC)`.

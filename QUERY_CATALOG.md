@@ -349,7 +349,7 @@ Proposed P1 index candidates for the next remediation batch:
 | Candidate ID | Query ID | Table | Columns | Status |
 | --- | --- | --- | --- | --- |
 | IDX-P2-005-001 | Q-PUB-003/Q-PUB-004 | news_posts | status, is_pinned DESC, published_at DESC | APPLIED / VERIFIED in migration 016 |
-| IDX-P2-005-002 | Q-ADM-005 | approval_documents | updated_at DESC | PROPOSED |
+| IDX-P2-005-002 | Q-ADM-005 | approval_documents | updated_at DESC | APPLIED / VERIFIED in migration 017 |
 | IDX-P2-005-003 | Q-ERP-012 | expense_requests | expense_date DESC, id DESC | PROPOSED |
 
 P2-005 baseline verdict: PASS.
@@ -374,5 +374,27 @@ Remaining recommended candidates:
 
 | Candidate ID | Query ID | Table | Status |
 | --- | --- | --- | --- |
-| IDX-P2-005-002 | Q-ADM-005 | approval_documents | PROPOSED |
+| IDX-P2-005-003 | Q-ERP-012 | expense_requests | PROPOSED |
+
+## 26. P2-005 Remediation Batch 2 Result
+
+Applied candidate:
+
+| Candidate ID | Query ID | Table | Migration | Result |
+| --- | --- | --- | --- | --- |
+| IDX-P2-005-002 | Q-ADM-005 | approval_documents | `017_approval_documents_updated_at_index.sql` | APPLIED / VERIFIED |
+
+Evidence summary:
+
+- Actual approval list routes are `GET /api/admin/approvals` and `GET /api/erp/approvals`.
+- Both routes share `adminApprovalsRoute`, which orders by `updated_at DESC LIMIT 200`.
+- Existing equivalent index before migration: none.
+- BEFORE EXPLAIN: Seq Scan plus explicit Sort on `updated_at DESC`.
+- AFTER EXPLAIN: still Seq Scan plus Sort because Production has 0 rows; the index is structurally aligned for scale.
+- Production rows changed: 0.
+
+Remaining recommended candidates:
+
+| Candidate ID | Query ID | Table | Status |
+| --- | --- | --- | --- |
 | IDX-P2-005-003 | Q-ERP-012 | expense_requests | PROPOSED |
