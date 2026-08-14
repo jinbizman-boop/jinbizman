@@ -1081,3 +1081,29 @@ Remaining P2-003 gap counts:
 - P0: 1
 - P1: 10
 - P2: 2
+
+## P2-003 Remediation Batch 1 Result - 2026-08-14
+
+Scope: only P2-003-GAP-001 leave duplicate/concurrent approval double-deduction.
+
+| Gap | Severity | Status | Evidence |
+|---|---|---|---|
+| P2-003-GAP-001 leave decision can double-deduct annual balance on duplicate/concurrent approval | P0 | REMEDIATED / VERIFIED | `applyLeaveDecisionAtomic()` runs leave status change and annual balance deduction in one guarded SQL CTE using DB canonical `requested_days`, expected status, sufficient-balance predicate, and atomic `used_days = used_days + requested_days`; duplicate/stale requests return conflict and do not mutate balance |
+| P2-003-GAP-002 public inquiry create lacks application idempotency/dedupe | P1 | GAP | Unchanged |
+| P2-003-GAP-003 inquiry conversion lacks DB uniqueness on `leads.inquiry_id` | P1 | PARTIAL | Unchanged |
+| P2-003-GAP-004 expense create can duplicate financial requests on mobile retry | P1 | GAP | Unchanged |
+| P2-003-GAP-005 approval document create can duplicate document/lines on retry | P1 | GAP | Unchanged |
+| P2-003-GAP-006 leave request duplicate/overlap policy is not DB- or app-enforced | P1 | POLICY_GAP | Unchanged |
+| P2-003-GAP-007 attendance correction decision has stale pre-read without update predicate | P1 | PARTIAL | Unchanged |
+| P2-003-GAP-008 evaluation finalize readiness/status is pre-read before update | P1 | PARTIAL | Unchanged |
+| P2-003-GAP-009 project/service bootstrap creates are not retry-safe across all side effects | P1 | GAP | Unchanged |
+| P2-003-GAP-010 resource allocation percentage cap can race | P1 | PARTIAL | Unchanged |
+| P2-003-GAP-011 service deployment request can duplicate requested history | P1 | GAP | Unchanged |
+| P2-003-GAP-012 async notification/email event dedupe is incomplete | P2 | PARTIAL | Unchanged |
+| P2-003-GAP-013 low-risk admin/editor creates are duplicate-by-design | P2 | NOT APPLICABLE | Unchanged |
+
+Remaining P2-003 gap counts after Batch 1 target state:
+
+- P0: 0
+- P1: 10
+- P2: 2

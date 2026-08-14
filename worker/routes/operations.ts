@@ -4,6 +4,7 @@ import { assertProjectScope, assertSelfScope, assertTeamScope, hasAnyRole } from
 import { writeAuditLog } from "../lib/audit";
 import { getSql } from "../lib/db";
 import { applyExpenseBudgetTransitionAtomic, type ExpenseStatus } from "../lib/expense-budget-transitions";
+import { applyLeaveDecisionAtomic, type LeaveDecisionStatus } from "../lib/leave-decisions";
 import { fail, ok } from "../lib/response";
 import { parseTimesheetSubmission, validateTimesheetWbsProjectLink } from "../lib/timesheets";
 import { oneOf, readJson, text } from "../lib/validation";
@@ -392,39 +393,16 @@ export async function leaveDecisionRoute(request: Request, env: Env, id: number)
   }
   if (!before) return fail("NOT_FOUND", "휴가 신청을 찾을 수 없습니다.", 404);
   if (!["submitted", "draft"].includes(String(before.status))) return fail("CONFLICT", "이미 처리된 휴가 신청입니다.", 409);
-  const consumesAnnual = status === "approved" && ["annual", "half_day_am", "half_day_pm"].includes(String(before.leave_type));
-  if (consumesAnnual) {
-    const balanceRows = await sql`
-      SELECT (granted_days + adjusted_days - used_days) AS remaining_days
-      FROM leave_balances
-      WHERE user_id = ${Number(before.user_id)} AND balance_year = EXTRACT(YEAR FROM ${String(before.start_date)}::date)::int
-      LIMIT 1
-    `;
-    if (!balanceRows[0]) return fail("PRECONDITION_FAILED", "해당 연도의 연차 잔액을 먼저 설정해주세요.", 412);
-    if (Number(balanceRows[0].remaining_days) < Number(before.requested_days)) return fail("PRECONDITION_FAILED", "잔여 연차가 부족합니다.", 412);
-  }
-  const rows = await sql`
-    WITH updated AS (
-      UPDATE leave_requests SET
-        status = ${status},
-        decided_by = ${auth.id},
-        decided_at = CASE WHEN ${status} IN ('approved','rejected') THEN now() ELSE NULL END,
-        updated_at = now()
-      WHERE id = ${id}
-      RETURNING *
-    ), balance AS (
-      UPDATE leave_balances b SET
-        used_days = b.used_days + (SELECT requested_days FROM updated),
-        updated_at = now()
-      WHERE ${consumesAnnual}
-        AND b.user_id = (SELECT user_id FROM updated)
-        AND b.balance_year = EXTRACT(YEAR FROM (SELECT start_date FROM updated))::int
-      RETURNING id
-    )
-    SELECT * FROM updated
-  `;
-  await writeAuditLog(request, env, auth, { actionType: `leave.${status}`, targetType: "leave_request", targetId: id, before, after: rows[0] });
-  return ok(rows[0]);
+  const mutation = await applyLeaveDecisionAtomic(sql, {
+    leaveRequestId: id,
+    actorUserId: auth.id,
+    nextStatus: status as LeaveDecisionStatus,
+  });
+  if (mutation.kind === "insufficient_balance") return fail("PRECONDITION_FAILED", "Insufficient leave balance.", 412);
+  if (mutation.kind === "conflict") return fail("CONFLICT", "Leave request was already processed.", 409);
+  await writeAuditLog(request, env, auth, { actionType: `leave.${status}`, targetType: "leave_request", targetId: id, before, after: mutation.leaveRequest });
+  return ok(mutation.leaveRequest);
+
 }
 
 // ---------------------------------------------------------------------------

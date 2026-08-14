@@ -72,7 +72,7 @@ Current explicit API idempotency support:
 | Attendance correction | `POST /api/erp/attendance/correction` | request correction | repeated request overwrites reason | low | update same attendance record | `attendance_records_user_date_uk` | not required | yes, last-write-wins | n/a | PASS | Accept current overwrite semantics |
 | Attendance correction decision | `PATCH /api/erp/attendance/:id/correction` | approve/reject correction | duplicate decision audit/rewrite | stale pre-read; update lacks `correction_status='requested'` predicate | pre-read state only | none | none | partial | n/a | P1 | Add conditional update guard in later batch |
 | Leave request | `POST /api/erp/leave` | create leave request | duplicate/overlap leave request | retry can create duplicate leave | balance precheck only | no unique overlap constraint | none | no | 0 | P1 | Define overlap/deduplication policy and add explicit key or natural guard |
-| Leave decision | `PATCH /api/erp/leave/:id` | approve/reject/cancel + balance deduction | duplicate approval can double-deduct annual balance | yes; status and balance checks are stale pre-reads | CTE updates by id, no status predicate | balance unique user/year only | none | no | 0 | P0 | Remediate with guarded atomic decision CTE and race-loser 409 |
+| Leave decision | `PATCH /api/erp/leave/:id` | approve/reject/cancel + balance deduction | duplicate approval replay | remediated | guarded single CTE on DB current status and annual balance | balance unique user/year only | not required | yes by state guard | 0 | PASS | State guard sufficient; no explicit key required |
 | Leave balance upsert | `POST /api/erp/leave/balance` | set annual balance | repeat replaces grant/adjustment | low | `ON CONFLICT (user_id, balance_year)` | yes | not required | yes | 0 | PASS | Existing upsert adequate |
 | Evaluation score | `POST /api/erp/evaluations/scores` | score upsert | repeat overwrites same evaluator/item | low | `ON CONFLICT` | `evaluation_scores_cycle_evale_evalr_item_uk` | not required | yes | n/a | PASS | Existing upsert adequate |
 | Evaluation finalize | `POST /api/erp/evaluations/cycles/:id/finalize` | finalize cycle | duplicate finalize | stale readiness pre-read, but repeated finalize is mostly idempotent | update by id only | none | none | partial | 0 | P1 | Add status predicate/readiness CTE in future transaction/concurrency batch |
@@ -104,7 +104,7 @@ Current explicit API idempotency support:
 | News translations | `news_post_translations(news_post_id, locale)` unique | DB uniqueness guarded |
 | Inquiry conversion | no unique `leads.inquiry_id` | GAP |
 | Public inquiry create | no natural duplicate key | GAP |
-| Leave decision | no status predicate in update | GAP |
+| Leave decision | guarded status predicate and atomic balance mutation | DB/state guarded |
 
 ## 5. Idempotency Classes
 
@@ -172,6 +172,7 @@ Covered:
 - Mobile refresh replay / session uniqueness from Phase 1 auth coverage.
 - Approval action guarded CTE, duplicate/stale no-result, and failure boundary tests.
 - Expense/budget guarded CTE, stale no-result, budget/project guard, and failure boundary tests.
+- Leave decision guarded CTE, duplicate/stale no-result, concurrent approval, insufficient balance, wrong approver, and failure boundary tests.
 - Timesheet WBS required validation and project/WBS relation tests.
 - Security tests assert CORS allows `idempotency-key`.
 
@@ -179,7 +180,6 @@ Missing / TEST_GAP:
 
 - Public inquiry duplicate submission / retry behavior.
 - Inquiry conversion concurrent duplicate lead test.
-- Leave concurrent approval / replay double-deduction test.
 - Leave request duplicate/overlap policy test.
 - Attendance correction decision stale-state test.
 - Evaluation finalize stale status/readiness test.
@@ -191,7 +191,7 @@ Missing / TEST_GAP:
 
 | Gap | Severity | Status | Evidence | Recommended action |
 |---|---|---|---|---|
-| P2-003-GAP-001 leave decision can double-deduct annual balance on duplicate/concurrent approval | P0 | GAP | `leaveDecisionRoute` checks status and balance before mutation, then updates `leave_requests` by id without an expected-status predicate; balance update uses stale pre-read `consumesAnnual` | P2-003 Remediation Batch 1: guarded atomic CTE with status predicate and race-loser 409 |
+| P2-003-GAP-001 leave decision can double-deduct annual balance on duplicate/concurrent approval | P0 | REMEDIATED / VERIFIED | `applyLeaveDecisionAtomic()` runs leave status change and annual balance deduction in one guarded SQL CTE using DB canonical `requested_days`, expected status, sufficient-balance predicate, and atomic `used_days = used_days + requested_days`; duplicate/stale requests return conflict and do not mutate balance | Closed by P2-003 Remediation Batch 1 |
 | P2-003-GAP-002 public inquiry create lacks application idempotency/dedupe | P1 | GAP | `POST /api/public/inquiries` inserts every valid request; email idempotency key is per created inquiry, not form submission | Add optional idempotency key or request fingerprint for public form submits |
 | P2-003-GAP-003 inquiry conversion lacks DB uniqueness on `leads.inquiry_id` | P1 | PARTIAL | conversion uses `NOT EXISTS`, but `leads.inquiry_id` has index only | Add unique constraint/guarded remediation after validating data |
 | P2-003-GAP-004 expense create can duplicate financial requests on mobile retry | P1 | GAP | expense transition is safe, but create is insert-only with no natural key/idempotency | Add explicit idempotency for expense create |
@@ -205,18 +205,18 @@ Missing / TEST_GAP:
 | P2-003-GAP-012 async notification/email event dedupe is incomplete | P2 | PARTIAL | inquiry email has provider key, but no app event key/queue dedupe table | Defer to queue/idempotent event processing phase |
 | P2-003-GAP-013 low-risk admin/editor creates are duplicate-by-design | P2 | NOT APPLICABLE | board/knowledge/media/project issue/meeting creates intentionally create new records | Keep UX double-click protection; no DB idempotency required unless policy changes |
 
-Gap totals:
+Remaining gap totals after P2-003 Remediation Batch 1:
 
-- P0: 1
+- P0: 0
 - P1: 10
 - P2: 2
-- Total: 13
+- Total: 12
 
 ## 9. Backlog Mapping
 
-P2-003 introduces one P0 remediation candidate:
+P2-003 introduced one P0 remediation candidate, now remediated:
 
-- P2-003 Remediation Batch 1: Leave Decision Atomic State Guard
+- P2-003 Remediation Batch 1: Leave Decision Atomic State Guard - REMEDIATED / VERIFIED
 
 P1/P2 findings remain backlog items and must not be remediated as part of the audit.
 
