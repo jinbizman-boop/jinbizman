@@ -1107,3 +1107,41 @@ Remaining P2-003 gap counts after Batch 1 target state:
 - P0: 0
 - P1: 10
 - P2: 2
+
+## P2-004 Query Inventory Result - 2026-08-14
+
+Audit artifact: `QUERY_CATALOG.md`.
+
+P2-004 audit status: IMPLEMENTED / VERIFIED for inventory-only scope.
+
+No DB write, migration, index change, source code change, manual deploy, DNS change, production login, or production business action was performed.
+
+Query inventory summary:
+
+- API contracts reviewed: 128
+- Unique API paths reviewed: 96
+- Direct Worker SQL templates extracted: 173
+- Production tables: 72
+- Production indexes: 422
+- P2-005 EXPLAIN candidate queries: 15
+
+Remediation remains open:
+
+| Gap | Severity | Status | Required follow-up |
+|---|---|---|---|
+| P2-004-GAP-001 todo list route performs WBS-to-todo synchronization on read path | P1 | GAP | P2-005 EXPLAIN baseline and possible query/index/refactor decision |
+| P2-004-GAP-002 dashboard aggregate COUNT patterns may scan large tables at target scale | P1 | GAP | P2-005 EXPLAIN dashboard aggregate queries |
+| P2-004-GAP-003 project list WBS aggregate/grouping is sensitive to the 500,000 WBS target | P1 | GAP | P2-005 EXPLAIN and index review |
+| P2-004-GAP-004 audit/log listing must be verified against the 5,000,000-row retention target | P1 | GAP | P2-005 EXPLAIN audit/log filters and order |
+| P2-004-GAP-005 evaluation readiness/finalize count checks need plan validation | P1 | GAP | P2-005 EXPLAIN count subqueries |
+| P2-004-GAP-006 public locale aggregate/UNION is on a public traffic path | P1 | GAP | P2-005 EXPLAIN and cache/materialization review if needed |
+| P2-004-GAP-007 resource allocation cap-check sum is partially indexed and should be baseline-tested | P1 | GAP | P2-005 EXPLAIN allocation sum |
+| P2-004-GAP-008 small config lists are intentionally unbounded today | P2 | PARTIAL | Add caps only if config tables become user-growth tables |
+| P2-004-GAP-009 low-frequency service bootstrap/helper loops are not primary hotspots | P2 | PARTIAL | Keep as low-priority optimization note |
+| P2-004-GAP-010 some admin lists use hard caps instead of full cursor pagination | P2 | PARTIAL | Product/UX pagination improvement later |
+
+Remaining P2-004 gap counts:
+
+- P0: 0
+- P1: 7
+- P2: 3
