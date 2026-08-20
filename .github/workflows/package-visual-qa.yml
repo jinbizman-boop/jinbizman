@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/uiux-enterprise-hardening-20260820
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -69,7 +72,7 @@ jobs:
         if: always()
         run: |
           printf 'repository=jinbizman-boop/jinbizman\n' > qa-artifacts/BUILD_METADATA.txt
-          printf 'branch=%s\n' "$GITHUB_REF_NAME" >> qa-artifacts/BUILD_METADATA.txt
+          printf 'branch=%s\n' "$GITHUB_HEAD_REF" >> qa-artifacts/BUILD_METADATA.txt
           printf 'commit=%s\n' "$GITHUB_SHA" >> qa-artifacts/BUILD_METADATA.txt
           printf 'run_id=%s\n' "$GITHUB_RUN_ID" >> qa-artifacts/BUILD_METADATA.txt
           printf 'generated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> qa-artifacts/BUILD_METADATA.txt
