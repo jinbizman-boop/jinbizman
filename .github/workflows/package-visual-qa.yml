@@ -1,0 +1,154 @@
+name: Package UIUX Visual QA Branch
+
+on:
+  push:
+    branches:
+      - feature/uiux-enterprise-hardening-20260820
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-uiux-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+
+      - name: Prepare QA folders
+        run: mkdir -p qa-artifacts ci-logs release
+
+      - name: Install dependencies
+        id: install
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee ci-logs/npm-ci.log
+
+      - name: Security audit
+        id: audit
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm audit --audit-level=high 2>&1 | tee ci-logs/npm-audit.log
+
+      - name: TypeScript check
+        id: typecheck
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee ci-logs/typecheck.log
+
+      - name: Automated tests
+        id: tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee ci-logs/tests.log
+
+      - name: Production build
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee ci-logs/build.log
+
+      - name: Install Playwright Chromium
+        id: browser
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npx playwright install --with-deps chromium 2>&1 | tee ci-logs/playwright-install.log
+
+      - name: Render all public and ERP screens
+        id: visual
+        if: steps.build.outcome == 'success' && steps.browser.outcome == 'success'
+        continue-on-error: true
+        env:
+          QA_ALLOW_ISSUES: "1"
+        run: |
+          set -o pipefail
+          node scripts/capture-visual-qa.mjs --serve 2>&1 | tee ci-logs/visual-qa.log
+
+      - name: Record build metadata
+        if: always()
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          BRANCH_NAME="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          printf 'repository=jinbizman-boop/jinbizman\n' > ci-logs/BUILD_METADATA.txt
+          printf 'branch=%s\n' "$BRANCH_NAME" >> ci-logs/BUILD_METADATA.txt
+          printf 'commit=%s\n' "$ACTUAL_SHA" >> ci-logs/BUILD_METADATA.txt
+          printf 'run_id=%s\n' "$GITHUB_RUN_ID" >> ci-logs/BUILD_METADATA.txt
+          printf 'generated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ci-logs/BUILD_METADATA.txt
+          printf 'install=%s\n' '${{ steps.install.outcome }}' >> ci-logs/BUILD_METADATA.txt
+          printf 'audit=%s\n' '${{ steps.audit.outcome }}' >> ci-logs/BUILD_METADATA.txt
+          printf 'typecheck=%s\n' '${{ steps.typecheck.outcome }}' >> ci-logs/BUILD_METADATA.txt
+          printf 'tests=%s\n' '${{ steps.tests.outcome }}' >> ci-logs/BUILD_METADATA.txt
+          printf 'build=%s\n' '${{ steps.build.outcome }}' >> ci-logs/BUILD_METADATA.txt
+          printf 'visual=%s\n' '${{ steps.visual.outcome }}' >> ci-logs/BUILD_METADATA.txt
+
+      - name: Create final source ZIP
+        if: always()
+        run: |
+          rm -rf release/jinbizman
+          mkdir -p release/jinbizman
+          rsync -a ./ release/jinbizman/ \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude '.dev.vars' \
+            --exclude '.env' \
+            --exclude '.wrangler/' \
+            --exclude 'release/'
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="${ACTUAL_SHA::7}"
+          ARCHIVE="jinbizman-uiux-final-${SHORT_SHA}.zip"
+          (cd release && zip -q -r "$ARCHIVE" jinbizman)
+          sha256sum "release/$ARCHIVE" | tee "release/$ARCHIVE.sha256"
+          ls -lh "release/$ARCHIVE" "release/$ARCHIVE.sha256"
+
+      - name: Upload final ZIP and QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jinbizman-uiux-final-${{ github.sha }}
+          path: |
+            release/jinbizman-uiux-final-*.zip
+            release/jinbizman-uiux-final-*.zip.sha256
+            ci-logs/
+            qa-artifacts/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Verification gate
+        if: always()
+        run: |
+          echo "install=${{ steps.install.outcome }}"
+          echo "typecheck=${{ steps.typecheck.outcome }}"
+          echo "tests=${{ steps.tests.outcome }}"
+          echo "build=${{ steps.build.outcome }}"
+          echo "browser=${{ steps.browser.outcome }}"
+          echo "visual=${{ steps.visual.outcome }}"
+          test "${{ steps.install.outcome }}" = "success"
+          test "${{ steps.typecheck.outcome }}" = "success"
+          test "${{ steps.tests.outcome }}" = "success"
+          test "${{ steps.build.outcome }}" = "success"
+          test "${{ steps.browser.outcome }}" = "success"
+          test "${{ steps.visual.outcome }}" = "success"
