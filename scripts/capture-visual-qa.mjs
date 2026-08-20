@@ -27,6 +27,10 @@ const publicBasePaths = [
   "/privacy",
   "/terms",
   "/email-policy",
+  "/projects/eureka-world",
+  "/projects/salary-captive",
+  "/projects/all-evaluations",
+  "/projects/new-retro-games",
 ];
 const localePrefixes = ["", "/en", "/ja", "/fr", "/es"];
 const adminKeys = [
@@ -54,6 +58,7 @@ const allPermissions = [
 
 const envelope = (data) => JSON.stringify({ success: true, data });
 const now = new Date().toISOString();
+const expectedScreenCount = viewports.length * ((localePrefixes.length * publicBasePaths.length) + adminKeys.length);
 
 function localizedPath(prefix, pathname) {
   if (!prefix) return pathname;
@@ -63,16 +68,6 @@ function localizedPath(prefix, pathname) {
 function safeName(value) {
   const clean = value.replace(/^\/+/, "").replace(/[^a-zA-Z0-9가-힣_-]+/g, "-").replace(/^-|-$/g, "");
   return clean || "home";
-}
-
-async function discoverProjectPaths() {
-  try {
-    const source = await fs.readFile(path.join(ROOT, "src/content/public.ts"), "utf8");
-    const slugs = [...source.matchAll(/slug:\s*["']([^"']+)["']/g)].map((match) => match[1]);
-    return [...new Set(slugs)].filter((slug) => !slug.includes("/")).map((slug) => `/projects/${slug}`);
-  } catch {
-    return [];
-  }
 }
 
 async function waitForServer(url, timeoutMs = 60_000) {
@@ -99,8 +94,9 @@ function startPreviewServer() {
   });
 }
 
-async function installApiMocks(page) {
-  await page.route("**/api/**", async (route) => {
+async function installApiMocks(context) {
+  await context.route(/\.(mp4|webm|mov)(\?.*)?$/i, async (route) => route.abort());
+  await context.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const pathname = url.pathname;
@@ -154,8 +150,11 @@ async function capture(page, routePath, viewport, kind, results) {
 
   const result = { kind, viewport: viewport.name, route: routePath, status: "ok", overflowPx: 0, brokenImages: [], consoleErrors, pageErrors, screenshot: "" };
   try {
-    await page.goto(`${BASE_URL}${routePath}`, { waitUntil: "networkidle", timeout: 45_000 });
-    await page.waitForTimeout(250);
+    await page.goto(`${BASE_URL}${routePath}`, { waitUntil: "domcontentloaded", timeout: 15_000 });
+    await page.locator("#root").waitFor({ state: "attached", timeout: 10_000 });
+    await page.evaluate(async () => { if (document.fonts?.ready) await document.fonts.ready; });
+    await page.waitForTimeout(120);
+
     const diagnostics = await page.evaluate(() => ({
       overflowPx: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth),
       brokenImages: [...document.images]
@@ -179,6 +178,9 @@ async function capture(page, routePath, viewport, kind, results) {
     page.off("console", onConsole);
     page.off("pageerror", onPageError);
     results.push(result);
+    if (results.length % 25 === 0 || results.length === expectedScreenCount) {
+      console.log(`Visual QA progress: ${results.length}/${expectedScreenCount}`);
+    }
   }
 }
 
@@ -213,6 +215,30 @@ async function writeReport(results) {
   return { p0: p0.length, p1: p1.length };
 }
 
+async function captureViewport(browser, viewport, results) {
+  const context = await browser.newContext({
+    viewport: { width: viewport.width, height: viewport.height },
+    locale: "ko-KR",
+    timezoneId: "Asia/Seoul",
+    reducedMotion: "reduce",
+    colorScheme: "light",
+  });
+  await installApiMocks(context);
+  const page = await context.newPage();
+  try {
+    for (const prefix of localePrefixes) {
+      for (const pathname of publicBasePaths) {
+        await capture(page, localizedPath(prefix, pathname), viewport, "public", results);
+      }
+    }
+    for (const key of adminKeys) {
+      await capture(page, `/admin/${key}`, viewport, "admin", results);
+    }
+  } finally {
+    await context.close();
+  }
+}
+
 let server;
 let browser;
 try {
@@ -224,32 +250,9 @@ try {
     await waitForServer(BASE_URL);
   }
 
-  const projectPaths = await discoverProjectPaths();
-  const publicPaths = [...new Set([...publicBasePaths, ...projectPaths])];
   const results = [];
   browser = await chromium.launch({ headless: true });
-
-  for (const viewport of viewports) {
-    const context = await browser.newContext({
-      viewport: { width: viewport.width, height: viewport.height },
-      locale: "ko-KR",
-      timezoneId: "Asia/Seoul",
-      reducedMotion: "reduce",
-      colorScheme: "light",
-    });
-    await installApiMocks(context);
-    const page = await context.newPage();
-
-    for (const prefix of localePrefixes) {
-      for (const pathname of publicPaths) {
-        await capture(page, localizedPath(prefix, pathname), viewport, "public", results);
-      }
-    }
-    for (const key of adminKeys) {
-      await capture(page, `/admin/${key}`, viewport, "admin", results);
-    }
-    await context.close();
-  }
+  await Promise.all(viewports.map((viewport) => captureViewport(browser, viewport, results)));
 
   const summary = await writeReport(results);
   console.log(`Visual QA complete: ${results.length} screens, P0=${summary.p0}, P1=${summary.p1}`);
