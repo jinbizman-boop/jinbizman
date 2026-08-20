@@ -1,0 +1,123 @@
+name: Package UIUX Visual QA Branch
+
+on:
+  push:
+    branches:
+      - feature/uiux-enterprise-hardening-20260820
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.20.0
+          cache: npm
+
+      - name: Prepare QA folders
+        run: mkdir -p qa-artifacts release
+
+      - name: Install dependencies
+        id: install
+        run: npm ci 2>&1 | tee qa-artifacts/npm-ci.log
+
+      - name: Security audit
+        id: audit
+        continue-on-error: true
+        run: npm audit --audit-level=high 2>&1 | tee qa-artifacts/npm-audit.log
+
+      - name: TypeScript check
+        id: typecheck
+        continue-on-error: true
+        run: npm run typecheck 2>&1 | tee qa-artifacts/typecheck.log
+
+      - name: Automated tests
+        id: tests
+        continue-on-error: true
+        run: npm test 2>&1 | tee qa-artifacts/tests.log
+
+      - name: Production build
+        id: build
+        continue-on-error: true
+        run: npm run build 2>&1 | tee qa-artifacts/build.log
+
+      - name: Install Playwright Chromium
+        id: browser
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: npx playwright install --with-deps chromium 2>&1 | tee qa-artifacts/playwright-install.log
+
+      - name: Render all public and ERP screens
+        id: visual
+        if: steps.build.outcome == 'success' && steps.browser.outcome == 'success'
+        continue-on-error: true
+        env:
+          QA_ALLOW_ISSUES: "1"
+        run: node scripts/capture-visual-qa.mjs --serve 2>&1 | tee qa-artifacts/visual-qa.log
+
+      - name: Record build metadata
+        if: always()
+        run: |
+          printf 'repository=jinbizman-boop/jinbizman\n' > qa-artifacts/BUILD_METADATA.txt
+          printf 'branch=%s\n' "$GITHUB_REF_NAME" >> qa-artifacts/BUILD_METADATA.txt
+          printf 'commit=%s\n' "$GITHUB_SHA" >> qa-artifacts/BUILD_METADATA.txt
+          printf 'run_id=%s\n' "$GITHUB_RUN_ID" >> qa-artifacts/BUILD_METADATA.txt
+          printf 'generated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> qa-artifacts/BUILD_METADATA.txt
+          printf 'install=%s\n' '${{ steps.install.outcome }}' >> qa-artifacts/BUILD_METADATA.txt
+          printf 'audit=%s\n' '${{ steps.audit.outcome }}' >> qa-artifacts/BUILD_METADATA.txt
+          printf 'typecheck=%s\n' '${{ steps.typecheck.outcome }}' >> qa-artifacts/BUILD_METADATA.txt
+          printf 'tests=%s\n' '${{ steps.tests.outcome }}' >> qa-artifacts/BUILD_METADATA.txt
+          printf 'build=%s\n' '${{ steps.build.outcome }}' >> qa-artifacts/BUILD_METADATA.txt
+          printf 'visual=%s\n' '${{ steps.visual.outcome }}' >> qa-artifacts/BUILD_METADATA.txt
+
+      - name: Create final source ZIP
+        if: always()
+        run: |
+          rm -rf release/jinbizman
+          mkdir -p release/jinbizman
+          rsync -a ./ release/jinbizman/ \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude '.dev.vars' \
+            --exclude '.env' \
+            --exclude '.wrangler/' \
+            --exclude 'release/'
+          SHORT_SHA="${GITHUB_SHA::7}"
+          ARCHIVE="jinbizman-uiux-final-${SHORT_SHA}.zip"
+          (cd release && zip -q -r "$ARCHIVE" jinbizman)
+          sha256sum "release/$ARCHIVE" | tee "release/$ARCHIVE.sha256"
+          ls -lh "release/$ARCHIVE" "release/$ARCHIVE.sha256"
+
+      - name: Upload final ZIP and QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jinbizman-uiux-final-${{ github.sha }}
+          path: |
+            release/jinbizman-uiux-final-*.zip
+            release/jinbizman-uiux-final-*.zip.sha256
+            qa-artifacts/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Verification gate
+        if: always()
+        run: |
+          echo "typecheck=${{ steps.typecheck.outcome }}"
+          echo "tests=${{ steps.tests.outcome }}"
+          echo "build=${{ steps.build.outcome }}"
+          echo "visual=${{ steps.visual.outcome }}"
+          test "${{ steps.typecheck.outcome }}" = "success"
+          test "${{ steps.tests.outcome }}" = "success"
+          test "${{ steps.build.outcome }}" = "success"
+          test "${{ steps.visual.outcome }}" = "success"
