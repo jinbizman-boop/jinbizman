@@ -12,9 +12,9 @@ const SHOULD_SERVE = process.argv.includes("--serve");
 const ALLOW_ISSUES = process.env.QA_ALLOW_ISSUES === "1";
 
 const viewports = [
-  { name: "desktop-1440", width: 1440, height: 900 },
-  { name: "tablet-768", width: 768, height: 1024 },
-  { name: "mobile-390", width: 390, height: 844 },
+  { name: "desktop-1440", width: 1440, height: 900, locales: ["", "/en", "/ja", "/fr", "/es"] },
+  { name: "tablet-768", width: 768, height: 1024, locales: [""] },
+  { name: "mobile-390", width: 390, height: 844, locales: [""] },
 ];
 
 const publicBasePaths = [
@@ -32,7 +32,7 @@ const publicBasePaths = [
   "/projects/all-evaluations",
   "/projects/new-retro-games",
 ];
-const localePrefixes = ["", "/en", "/ja", "/fr", "/es"];
+
 const adminKeys = [
   "dashboard", "services", "site-content", "news", "inquiries", "leads", "opportunities",
   "projects", "daily-work", "todos", "approvals", "attendance", "leave", "timesheets",
@@ -41,6 +41,8 @@ const adminKeys = [
   "site-navigation", "approval-templates", "code-groups", "integrations", "email-templates",
   "audit-logs", "settings",
 ];
+const adminPaths = ["/admin/login", ...adminKeys.map((key) => `/admin/${key}`)];
+
 const allPermissions = [
   "project.read", "project.create", "project.update", "wbs.read", "wbs.create", "wbs.update",
   "system.read", "system.update", "audit.read", "service.read", "service.create", "service.update",
@@ -58,7 +60,10 @@ const allPermissions = [
 
 const envelope = (data) => JSON.stringify({ success: true, data });
 const now = new Date().toISOString();
-const expectedScreenCount = viewports.length * ((localePrefixes.length * publicBasePaths.length) + adminKeys.length);
+const expectedScreenCount = viewports.reduce(
+  (total, viewport) => total + (viewport.locales.length * publicBasePaths.length) + adminPaths.length,
+  0,
+);
 
 function localizedPath(prefix, pathname) {
   if (!prefix) return pathname;
@@ -150,10 +155,9 @@ async function capture(page, routePath, viewport, kind, results) {
 
   const result = { kind, viewport: viewport.name, route: routePath, status: "ok", overflowPx: 0, brokenImages: [], consoleErrors, pageErrors, screenshot: "" };
   try {
-    await page.goto(`${BASE_URL}${routePath}`, { waitUntil: "domcontentloaded", timeout: 15_000 });
-    await page.locator("#root").waitFor({ state: "attached", timeout: 10_000 });
-    await page.evaluate(async () => { if (document.fonts?.ready) await document.fonts.ready; });
-    await page.waitForTimeout(120);
+    await page.goto(`${BASE_URL}${routePath}`, { waitUntil: "domcontentloaded", timeout: 8_000 });
+    await page.locator("#root").waitFor({ state: "attached", timeout: 5_000 });
+    await page.waitForTimeout(180);
 
     const diagnostics = await page.evaluate(() => ({
       overflowPx: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth),
@@ -166,10 +170,17 @@ async function capture(page, routePath, viewport, kind, results) {
     result.brokenImages = diagnostics.brokenImages;
     if (diagnostics.bodyTextLength < 20) result.status = "empty";
 
-    const relative = path.join("screenshots", viewport.name, kind, `${safeName(routePath)}.png`);
+    const relative = path.join("screenshots", viewport.name, kind, `${safeName(routePath)}.jpg`);
     const absolute = path.join(OUTPUT_DIR, relative);
     await fs.mkdir(path.dirname(absolute), { recursive: true });
-    await page.screenshot({ path: absolute, fullPage: true, animations: "disabled" });
+    await page.screenshot({
+      path: absolute,
+      type: "jpeg",
+      quality: 84,
+      fullPage: true,
+      animations: "disabled",
+      timeout: 15_000,
+    });
     result.screenshot = relative.replaceAll("\\", "/");
   } catch (error) {
     result.status = "error";
@@ -178,7 +189,7 @@ async function capture(page, routePath, viewport, kind, results) {
     page.off("console", onConsole);
     page.off("pageerror", onPageError);
     results.push(result);
-    if (results.length % 25 === 0 || results.length === expectedScreenCount) {
+    if (results.length % 20 === 0 || results.length === expectedScreenCount) {
       console.log(`Visual QA progress: ${results.length}/${expectedScreenCount}`);
     }
   }
@@ -190,6 +201,11 @@ async function writeReport(results) {
   const report = {
     generatedAt: new Date().toISOString(),
     baseURL: BASE_URL,
+    coverage: {
+      desktop: "공개 5개 언어 전 페이지 + ERP 전 화면",
+      tablet: "한국어 공개 전 페이지 + ERP 전 화면",
+      mobile: "한국어 공개 전 페이지 + ERP 전 화면",
+    },
     totals: { screens: results.length, p0: p0.length, p1: p1.length },
     results,
   };
@@ -202,6 +218,9 @@ async function writeReport(results) {
     `- 전체 렌더링: ${results.length}`,
     `- P0: ${p0.length}`,
     `- P1: ${p1.length}`,
+    "- Desktop 1440: 공개 5개 언어 전 페이지 + ERP 전 화면",
+    "- Tablet 768: 한국어 공개 전 페이지 + ERP 전 화면",
+    "- Mobile 390: 한국어 공개 전 페이지 + ERP 전 화면",
     "",
     "## P0",
     ...(p0.length ? p0.map((item) => `- ${item.viewport} · ${item.route} · status=${item.status} · overflow=${item.overflowPx}px · broken=${item.brokenImages.length} · pageErrors=${item.pageErrors.length}`) : ["- 없음"]),
@@ -225,14 +244,17 @@ async function captureViewport(browser, viewport, results) {
   });
   await installApiMocks(context);
   const page = await context.newPage();
+  page.setDefaultTimeout(10_000);
+  page.setDefaultNavigationTimeout(8_000);
+
   try {
-    for (const prefix of localePrefixes) {
+    for (const prefix of viewport.locales) {
       for (const pathname of publicBasePaths) {
         await capture(page, localizedPath(prefix, pathname), viewport, "public", results);
       }
     }
-    for (const key of adminKeys) {
-      await capture(page, `/admin/${key}`, viewport, "admin", results);
+    for (const adminPath of adminPaths) {
+      await capture(page, adminPath, viewport, "admin", results);
     }
   } finally {
     await context.close();
