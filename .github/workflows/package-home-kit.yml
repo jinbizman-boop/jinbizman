@@ -1,0 +1,106 @@
+name: Package Verified Home QA Kit
+
+on:
+  push:
+    branches:
+      - feature/uiux-enterprise-hardening-20260820
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-home-kit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-home-kit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+
+      - name: Prepare folders
+        run: mkdir -p ci-logs release
+
+      - name: Install dependencies
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee ci-logs/npm-ci.log
+
+      - name: Security audit
+        run: |
+          set -o pipefail
+          npm audit --audit-level=high 2>&1 | tee ci-logs/npm-audit.log
+
+      - name: TypeScript check
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee ci-logs/typecheck.log
+
+      - name: Automated tests
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee ci-logs/tests.log
+
+      - name: Production build
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee ci-logs/build.log
+
+      - name: Record metadata
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          BRANCH_NAME="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          printf 'repository=jinbizman-boop/jinbizman\n' > ci-logs/BUILD_METADATA.txt
+          printf 'branch=%s\n' "$BRANCH_NAME" >> ci-logs/BUILD_METADATA.txt
+          printf 'commit=%s\n' "$ACTUAL_SHA" >> ci-logs/BUILD_METADATA.txt
+          printf 'run_id=%s\n' "$GITHUB_RUN_ID" >> ci-logs/BUILD_METADATA.txt
+          printf 'generated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ci-logs/BUILD_METADATA.txt
+          printf 'node=%s\n' "$(node --version)" >> ci-logs/BUILD_METADATA.txt
+          printf 'npm=%s\n' "$(npm --version)" >> ci-logs/BUILD_METADATA.txt
+          printf 'verification=install,audit,typecheck,test,build:success\n' >> ci-logs/BUILD_METADATA.txt
+
+      - name: Create verified source ZIP
+        run: |
+          rm -rf release/jinbizman
+          mkdir -p release/jinbizman
+          rsync -a ./ release/jinbizman/ \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude '.dev.vars' \
+            --exclude '.env' \
+            --exclude '.wrangler/' \
+            --exclude 'release/' \
+            --exclude 'qa-artifacts/'
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="${ACTUAL_SHA::7}"
+          ARCHIVE="jinbizman-home-qa-kit-${SHORT_SHA}.zip"
+          (cd release && zip -q -r "$ARCHIVE" jinbizman)
+          sha256sum "release/$ARCHIVE" | tee "release/$ARCHIVE.sha256"
+          unzip -t "release/$ARCHIVE" | tee ci-logs/zip-integrity.log
+          ls -lh "release/$ARCHIVE" "release/$ARCHIVE.sha256"
+
+      - name: Upload verified home kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: jinbizman-home-qa-kit-${{ github.sha }}
+          path: |
+            release/jinbizman-home-qa-kit-*.zip
+            release/jinbizman-home-qa-kit-*.zip.sha256
+            ci-logs/
+          if-no-files-found: error
+          retention-days: 30
